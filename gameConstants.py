@@ -1,8 +1,9 @@
 from enum import Enum
 from collections import Counter
 
-GRAPHICS = False
-# Moved here because not in draw
+GRAPHICS = True
+VERBOSE = True
+
 def getColorForPlayer(player):
     return {
       0: "red",
@@ -19,13 +20,24 @@ NUM_INITIAL_SETTLEMENTS = 2
 TOTAL_NUM_AGENTS = 13
 CUTOFF_TURNS = 600
 
-VERBOSE = True
-
 DEFAULT_PLAYER_ARRAY = [4,0]
 
-ACTIONS = Enum(["SETTLE", "CITY", "ROAD"])
+class ACTIONS(Enum):
+    SETTLE = 1
+    CITY = 2
+    ROAD = 3
 
-ResourceTypes = Enum(["BRICK", "WOOL", "ORE", "GRAIN", "LUMBER" ,"NOTHING"])
+class ResourceTypes(Enum):
+    BRICK = 1
+    WOOL = 2
+    ORE = 3
+    GRAIN = 4
+    LUMBER = 5
+    NOTHING = 6
+
+class AGENT(Enum):
+    PLAYER_AGENT = 1
+    DICE_AGENT = 2
 
 # Resource costs of a Road, a Settlement, and a City
 ROAD_COST = Counter({ResourceTypes.BRICK: 1, ResourceTypes.LUMBER: 1})
@@ -38,9 +50,6 @@ ResourceDict = {ResourceTypes.GRAIN:"G", ResourceTypes.WOOL:"W", ResourceTypes.O
 NUM_PLAYERS = 2
 NUM_ITERATIONS = 4
 DEPTH = 3
-
-# Types of Agents
-AGENT = Enum(["PLAYER_AGENT", "DICE_AGENT"])
 
 # Set debug mode on or off
 DEBUG = False
