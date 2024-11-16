@@ -3,7 +3,7 @@ from collections import Counter
 
 GRAPHICS = True
 VERBOSE = True
-DEBUG = True
+# DEBUG = True
 
 def getColorForPlayer(player):
     return {

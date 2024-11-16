@@ -10,15 +10,6 @@ class Actions(Enum):
     ROAD = 4
     TRADE = 5
 
-# Different resource types a tile could have
-# class ResourceTypes(Enum):
-#     BRICK = 1
-#     WOOL = 2
-#     ORE = 3
-#     GRAIN = 4
-#     LUMBER = 5
-#     NOTHING = 6
-
 # A dictionary from resource type (enum, above) to string representation
 ResourceDict = {
     ResourceTypes.GRAIN: "G",
