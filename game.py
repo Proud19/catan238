@@ -119,6 +119,8 @@ class Game:
             self.gameState.playerAgents[i] = self.createPlayer(self.playerAgentNums[i], i)
 
     def initializeSettlementsAndResourcesLumberBrick(self):
+        if VERBOSE and DEBUG:
+            print("Initializing settlements and resources for lumber and brick")
         settlements = self.gameState.board.getRandomVerticesForSettlement()
         for i, playerSettlements in enumerate(settlements):
             agent = self.gameState.playerAgents[i]
@@ -132,6 +134,8 @@ class Game:
             agent.updateVictoryPoints()
 
     def initializeSettlementsAndResourcesForSettlements(self):
+        if VERBOSE and DEBUG:
+            print("Initializing settlements and resources for settlements")
         settlements = self.gameState.board.getRandomVerticesForAllResources()
         for i, playerSettlements in enumerate(settlements):
             agent = self.gameState.playerAgents[i]
@@ -145,6 +149,8 @@ class Game:
             agent.collectInitialResources(self.gameState.board)
 
     def initializeSettlementsAndResourcesRandom(self):
+        if VERBOSE and DEBUG:
+            print("Initializing settlements and resources randomly")
         for agent in self.gameState.playerAgents:
             for _ in range(NUM_INITIAL_SETTLEMENTS):
                 settlement = self.gameState.board.getRandomVertexForSettlement()
@@ -158,6 +164,8 @@ class Game:
             agent.collectInitialResources(self.gameState.board)
 
     def initializeSettlementsAndResourcesPreset(self):
+        if VERBOSE and DEBUG:
+            print("Initializing settlements and resources with preset values")
         initialSettlements = [
             (self.gameState.board.getVertex(2, 4), self.gameState.board.getVertex(4, 8)),
             (self.gameState.board.getVertex(2, 8), self.gameState.board.getVertex(3, 5)),

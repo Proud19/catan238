@@ -69,12 +69,18 @@ class PlayerAgent(object):
     def __repr__(self):
         s = f"---------- {self.name} : {self.color} ----------\n"
         s += f"Victory points: {self.victoryPoints}\n"
-        s += f"Resources: {self.resources}\n"
+        # s += f"Resources: {self.resources}\n"
+        for resource, amount in self.resources.items():
+            s += f"{resource.name.capitalize()}: {amount}\n"
         s += f"Settlements ({len(self.settlements)}): {self.settlements}\n"
         s += f"Roads ({len(self.roads)}): {self.roads}\n"
         s += f"Cities ({len(self.cities)}): {self.cities}\n"
         s += "--------------------------------------------\n"
         return s
+
+    def print_resources(self):
+        for resource, amount in self.resources.items():
+            print(f"{resource.name.capitalize()}: {amount}")
 
     def canBuildRoad(self):
         return self.resources[ResourceTypes.BRICK] >= 1 and self.resources[ResourceTypes.LUMBER] >= 1
@@ -135,6 +141,9 @@ class PlayerAgent(object):
         return newResources
 
     def collectInitialResources(self, board, settlement):
+        if VERBOSE and DEBUG:
+            print("Collecting initial resources for player", self.agentIndex)
+    
         surroundingHexes = board.getHexes(settlement)
         for hex in surroundingHexes:
             if hex.resource != ResourceTypes.NOTHING:
@@ -351,6 +360,8 @@ def updateVictoryPoints(self):
                           len(self.cities) * CITY_VICTORY_POINTS)
 
 def collectInitialResources(self, board, settlement):
+    if VERBOSE and DEBUG:
+        print("Collecting initial resources for player", self.agentIndex)
     surroundingHexes = board.getHexes(settlement)
     for hex in surroundingHexes:
         if hex.resource != ResourceTypes.NOTHING:
