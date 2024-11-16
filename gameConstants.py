@@ -3,6 +3,7 @@ from collections import Counter
 
 GRAPHICS = True
 VERBOSE = True
+DEBUG = True
 
 def getColorForPlayer(player):
     return {
@@ -50,6 +51,3 @@ ResourceDict = {ResourceTypes.GRAIN:"G", ResourceTypes.WOOL:"W", ResourceTypes.O
 NUM_PLAYERS = 2
 NUM_ITERATIONS = 4
 DEPTH = 3
-
-# Set debug mode on or off
-DEBUG = False
