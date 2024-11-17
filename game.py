@@ -74,6 +74,12 @@ class GameState:
                 print(f"{agent.name} received: {gainedResources}")
                 print(f"{agent.name} now has: {agent.resources}")
 
+    def applyAction(self, playerIndex, action):
+        self.playerAgents[playerIndex].applyAction(action, self.board, self)
+        self.board.applyAction(playerIndex, action)
+        if action[0] == ACTIONS.ROAD:
+            self.playerAgents[playerIndex].updateLongestRoad(self.board, self)
+
 class Game:
     def __init__(self, playerAgentNums=None):
         self.moveHistory = []
@@ -119,19 +125,19 @@ class Game:
             self.gameState.playerAgents[i] = self.createPlayer(self.playerAgentNums[i], i)
 
     def initializeSettlementsAndResourcesLumberBrick(self):
-        if VERBOSE and DEBUG:
-            print("Initializing settlements and resources for lumber and brick")
         settlements = self.gameState.board.getRandomVerticesForSettlement()
         for i, playerSettlements in enumerate(settlements):
             agent = self.gameState.playerAgents[i]
-            for settlement in playerSettlements:
-                agent.settlements.append(settlement)
-                self.gameState.board.allSettlements.append(settlement)
-                road = self.gameState.board.getRandomRoad(settlement)
-                self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, road))
-                agent.roads.append(road)
-                agent.collectInitialResources(self.gameState.board, settlement)
-            agent.updateVictoryPoints()
+            settleOne, settleTwo = playerSettlements
+            agent.settlements.extend([settleOne, settleTwo])
+            roadOne = self.gameState.board.getRandomRoad(settleOne)
+            roadTwo = self.gameState.board.getRandomRoad(settleTwo)
+            self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, roadOne))
+            self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, roadTwo))
+            agent.roads.extend([roadOne, roadTwo])
+
+        for agent in self.gameState.playerAgents:
+            agent.collectInitialResources(self.gameState.board)
 
     def initializeSettlementsAndResourcesForSettlements(self):
         if VERBOSE and DEBUG:
@@ -220,15 +226,27 @@ class Game:
             diceRoll = self.gameState.diceAgent.rollDice()
             if VERBOSE:
                 print(f"Rolled a {diceRoll}")
-            
+
             self.gameState.updatePlayerResourcesForDiceRoll(diceRoll)
 
             value, action = currentAgent.getAction(self.gameState)
             if action is not None:
-                currentAgent.applyAction(action, self.gameState.board)
-                self.gameState.board.applyAction(currentAgent.agentIndex, action)
+                self.gameState.applyAction(currentAgentIndex, action)
+
                 if VERBOSE:
                     print(f"{currentAgent.name} took action {action[0]} at {action[1]}")
+
+                if action[0] == ACTIONS.ROAD and currentAgent.numRoads >= MAX_ROADS:
+                    if VERBOSE:
+                        print(f"{currentAgent.name} has reached the maximum number of roads ({MAX_ROADS}).")
+                elif action[0] == ACTIONS.SETTLE and currentAgent.numSettlements >= MAX_SETTLEMENTS:
+                    if VERBOSE:
+                        print(f"{currentAgent.name} has reached the maximum number of settlements ({MAX_SETTLEMENTS}).")
+                elif action[0] == ACTIONS.CITY and currentAgent.numCities >= MAX_CITIES:
+                    if VERBOSE:
+                        print(f"{currentAgent.name} has reached the maximum number of cities ({MAX_CITIES}).")
+                if GRAPHICS:
+                    self.drawGame()
             else:
                 if VERBOSE:
                     print(f"{currentAgent.name} had no actions to take")

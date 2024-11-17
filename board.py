@@ -202,14 +202,14 @@ class Board:
     def applyAction(self, playerIndex, action):
         if action is None:
             return
-            
+        
         if action[0] == ACTIONS.SETTLE:
             actionVertex = action[1]
             vertex = self.getVertex(actionVertex.X, actionVertex.Y)
             vertex.settle(playerIndex)
-            self.allSettlements.append(vertex)
             for neighborVertex in self.getNeighborVertices(vertex):
                 neighborVertex.canSettle = False
+            self.allSettlements.append(vertex)
 
         if action[0] == ACTIONS.ROAD:
             actionEdge = action[1]
@@ -217,12 +217,14 @@ class Board:
             edge.build(playerIndex)
             self.allRoads.append(edge)
 
-        if action[0] == Actions.CITY:
+        if action[0] == ACTIONS.CITY:
             actionVertex = action[1]
             vertex = self.getVertex(actionVertex.X, actionVertex.Y)
             vertex.upgrade(playerIndex)
             self.allCities.append(vertex)
-            self.allSettlements = [s for s in self.allSettlements if not (s.X == vertex.X and s.Y == vertex.Y)]
+            self.allSettlements = [
+                s for s in self.allSettlements if not (s.X == vertex.X and s.Y == vertex.Y)
+            ]
 
     def getResourcesFromDieRollForPlayer(self, playerIndex, dieRoll):
         hexagons = self.dieRollDict.get(dieRoll, [])
@@ -462,3 +464,34 @@ class Board:
                 vertexHexes.append(hexThree)
         
         return vertexHexes
+    
+    def calculateLongestRoad(self, playerIndex):
+        def dfs(start, visited=None, length=0):
+            if visited is None:
+                visited = set()
+            if start in visited:
+                return length
+            
+            visited.add(start)
+            max_length = length
+            
+            for neighbor in self.getConnectedVertices(start, playerIndex):
+                if neighbor not in visited:
+                    max_length = max(max_length, dfs(neighbor, visited.copy(), length + 1))
+            
+            return max_length
+        
+        max_road_length = 0
+        for road in [road for road in self.allRoads if road.player == playerIndex]:
+            start_vertex, end_vertex = self.getVertexEnds(road)
+            max_road_length = max(max_road_length, dfs(start_vertex), dfs(end_vertex))
+        
+        return max_road_length
+    
+    def getConnectedVertices(self, vertex, playerIndex):
+        connected = []
+        for edge in self.getEdgesOfVertex(vertex):
+            if edge.player == playerIndex:
+                start, end = self.getVertexEnds(edge)
+                connected.append(end if start == vertex else start)
+        return connected
