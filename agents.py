@@ -66,8 +66,8 @@ class PlayerAgent(object):
         self.settlements = []
         self.cities = []
 
-        self.numRoads = 0
-        self.numSettlements = 2  # Start with 2 initial settlements
+        self.numRoads = 2
+        self.numSettlements = 2
         self.numCities = 0
 
         self.hasLongestRoad = False
@@ -213,6 +213,34 @@ class PlayerAgent(object):
 
         self.longestRoadLength = longestRoadLength
 
+    def discard_half_on_seven(self):
+        total_resources = sum(self.resources.values())
+        if total_resources <= 7:
+            return
+
+        discard_count = total_resources // 2
+        discarded = Counter()
+
+        while sum(discarded.values()) < discard_count:
+            resource = random.choice(list(self.resources.keys()))
+            if self.resources[resource] > discarded[resource]:
+                discarded[resource] += 1
+
+        self.resources -= discarded
+        return discarded
+
+    def choose_robber_placement(self, board):
+        valid_hexes = board.get_valid_robber_hexes()
+        return random.choice(valid_hexes)
+
+    def steal_resource(self, victim):
+        if len(victim.resources) == 0:
+            return None
+        resource = random.choice(list(victim.resources.elements()))
+        victim.resources[resource] -= 1
+        self.resources[resource] += 1
+        return resource
+
 class PlayerAgentExpectiminimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth = 3, evalFn = defaultEvalFn):
         super(PlayerAgentExpectiminimax, self).__init__(name, agentIndex, color, depth=depth, evalFn=evalFn)
@@ -270,6 +298,32 @@ class PlayerAgentExpectiminimax(PlayerAgent):
             actions.append(currAction)
 
         return (max(vals), actions[vals.index(max(vals))])
+    
+    def choose_cards_to_discard(self, discard_count):
+        # Implement a smarter discarding strategy here
+        # For now, we'll use a simple strategy of discarding the most abundant resources
+        discarded = Counter()
+        resources_list = sorted(self.resources.items(), key=lambda x: x[1], reverse=True)
+        
+        for resource, count in resources_list:
+            while count > 0 and sum(discarded.values()) < discard_count:
+                discarded[resource] += 1
+                count -= 1
+            
+            if sum(discarded.values()) == discard_count:
+                break
+        
+        return discarded
+
+    def discard_half_on_seven(self):
+        total_resources = sum(self.resources.values())
+        if total_resources <= 7:
+            return None
+
+        discard_count = total_resources // 2
+        discarded = self.choose_cards_to_discard(discard_count)
+        self.resources -= discarded
+        return discarded
 
 class PlayerAgentAlphaBeta(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth = 3, evalFn = defaultEvalFn):
@@ -354,6 +408,10 @@ class PlayerAgentRandom(PlayerAgent):
         elif action == ACTIONS.CITY:
             return self.canBuildCity()
         return False
+
+    def choose_robber_placement(self, board):
+        valid_hexes = board.get_valid_robber_hexes()
+        return random.choice(valid_hexes)
 
 class PlayerAgentExpectimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn = defaultEvalFn):

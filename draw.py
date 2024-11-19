@@ -1,19 +1,34 @@
+import pygame
 from board import ResourceTypes
 from gameConstants import getColorForPlayer
-from tkinter import Tk, Canvas, PhotoImage
 
 class Draw:
-    def __init__(self, tiles):
-        self.root = Tk()
-        self.root.resizable(0, 0)
-        self.title = PhotoImage(file="resources/catan.gif")
+    def __init__(self, tiles, screen, board):
+        self.screen = screen
         self.tiles = tiles
+        self.board = board
         self.vertexOffsets = self.verticesInit()
         self.dimenInit()
         self.imageInit()
         self.pieceInit()
-        self.canvas = Canvas(self.root, width=self.width, height=self.height)
-        self.canvas.pack()
+        self.hex_centers = {}
+
+    def findSImage(self, color, settlement, city):
+        if settlement:
+            return {
+                "red": self.redS,
+                "blue": self.blueS,
+                "black": self.blackS,
+                "brown": self.brownS
+            }.get(color)
+        elif city:
+            return {
+                "red": self.redC,
+                "blue": self.blueC,
+                "black": self.blackC,
+                "brown": self.brownC
+            }.get(color)
+        return None
 
     def dimenInit(self):
         self.d = 70  # distance from center to edge of hex
@@ -27,22 +42,22 @@ class Draw:
         self.xOffset = self.width / 2
 
     def imageInit(self):
-        self.desert = PhotoImage(file='resources/desert.gif')
-        self.field = PhotoImage(file='resources/field.gif')
-        self.forest = PhotoImage(file='resources/forest.gif')
-        self.hill = PhotoImage(file='resources/hill.gif')
-        self.mountain = PhotoImage(file='resources/mountain.gif')
-        self.pasture = PhotoImage(file='resources/pasture.gif')
+        self.desert = pygame.image.load('resources/desert.gif').convert_alpha()
+        self.field = pygame.image.load('resources/field.gif').convert_alpha()
+        self.forest = pygame.image.load('resources/forest.gif').convert_alpha()
+        self.hill = pygame.image.load('resources/hill.gif').convert_alpha()
+        self.mountain = pygame.image.load('resources/mountain.gif').convert_alpha()
+        self.pasture = pygame.image.load('resources/pasture.gif').convert_alpha()
 
     def pieceInit(self):
-        self.redS = PhotoImage(file='resources/redS.gif')
-        self.blueS = PhotoImage(file='resources/blueS.gif')
-        self.blackS = PhotoImage(file='resources/blackS.gif')
-        self.brownS = PhotoImage(file='resources/brownS.gif')
-        self.redC = PhotoImage(file='resources/redC.gif')
-        self.blueC = PhotoImage(file='resources/blueC.gif')
-        self.blackC = PhotoImage(file='resources/blackC.gif')
-        self.brownC = PhotoImage(file='resources/brownC.gif')
+        self.redS = pygame.image.load('resources/redS.gif').convert_alpha()
+        self.blueS = pygame.image.load('resources/blueS.gif').convert_alpha()
+        self.blackS = pygame.image.load('resources/blackS.gif').convert_alpha()
+        self.brownS = pygame.image.load('resources/brownS.gif').convert_alpha()
+        self.redC = pygame.image.load('resources/redC.gif').convert_alpha()
+        self.blueC = pygame.image.load('resources/blueC.gif').convert_alpha()
+        self.blackC = pygame.image.load('resources/blackC.gif').convert_alpha()
+        self.brownC = pygame.image.load('resources/brownC.gif').convert_alpha()
 
     def verticesInit(self):
         return (
@@ -63,20 +78,27 @@ class Draw:
             self.drawRow(row, index, cX, cY)
             index += row
             cY += self.rowHeight
+        
+        if hasattr(self.board, 'robber') and self.board.robber.hex is not None:
+            self.drawRobber(self.board.robber.hex)
 
     def drawRow(self, numTiles, index, cX, cY):
         for tile in range(numTiles):
             cX += self.hexWidth
             hexagon = self.tiles[index]
             image = self.getImageForResource(hexagon.resource)
-            self.canvas.create_image(cX, cY, image=image)
+            self.screen.blit(image, (cX - image.get_width()//2, cY - image.get_height()//2))
             self.drawNum(cX, cY, hexagon.diceValue)
+            self.hex_centers[hexagon] = (cX, cY)
             index += 1
 
     def drawNum(self, xOffset, yOffset, num):
-        color = "red" if num in (8, 6) else "black"
-        self.canvas.create_oval(xOffset - self.numR, yOffset - self.numR, xOffset + self.numR, yOffset + self.numR, fill="white")
-        self.canvas.create_text(xOffset, yOffset, text=str(num), fill=color)
+        color = (255, 0, 0) if num in (8, 6) else (0, 0, 0)
+        pygame.draw.circle(self.screen, (255, 255, 255), (int(xOffset), int(yOffset)), self.numR)
+        font = pygame.font.Font(None, 36)
+        text = font.render(str(num), True, color)
+        text_rect = text.get_rect(center=(xOffset, yOffset))
+        self.screen.blit(text, text_rect)
 
     def drawSettlements(self, vertices):
         for vertex in vertices:
@@ -85,7 +107,7 @@ class Draw:
                 image = self.findSImage(color, vertex.isSettlement, vertex.isCity)
                 if image:
                     xPos, yPos = self.calculateVertexPosition(vertex)
-                    self.canvas.create_image(xPos, yPos, image=image)
+                    self.screen.blit(image, (xPos - image.get_width()//2, yPos - image.get_height()//2))
 
     def drawCities(self, vertices):
         self.drawSettlements(vertices)
@@ -93,7 +115,7 @@ class Draw:
     def calculateVertexPosition(self, vertex):
         xOffset, yOffset = self.vertexOffsets[vertex.X][vertex.Y]
         xPos = (self.xOffset
-                - self.hexWidth / 2 * 4  # account for first 3 rows
+                - self.hexWidth / 2 * 4
                 + self.hexWidth / 2 * xOffset)
         yPos = (self.yOffset - self.hexHeight * 0.5
                 + self.hexHeight * yOffset)
@@ -105,10 +127,10 @@ class Draw:
             ox, oy = self.calculateVertexPosition(start)
             ex, ey = self.calculateVertexPosition(end)
             color = getColorForPlayer(road.player)
-            self.canvas.create_line(ox, oy, ex, ey, width=5, fill=color)
+            pygame.draw.line(self.screen, pygame.Color(color), (ox, oy), (ex, ey), 5)
 
     def drawTitle(self):
-        self.canvas.create_image(120, 70, image=self.title)
+        self.screen.blit(self.title, (120 - self.title.get_width()//2, 70 - self.title.get_height()//2))
 
     def getImageForResource(self, resource):
         return {
@@ -120,22 +142,20 @@ class Draw:
             ResourceTypes.NOTHING: self.desert
         }.get(resource, None)
 
-    def findSImage(self, color, settlement, city):
-        if settlement:
-            return {
-                "red": self.redS,
-                "blue": self.blueS,
-                "black": self.blackS,
-                "brown": self.brownS
-            }.get(color)
-        elif city:
-            return {
-                "red": self.redC,
-                "blue": self.blueC,
-                "black": self.blackC,
-                "brown": self.brownC
-            }.get(color)
-        return None
-
     def drawBG(self):
-        self.canvas.create_rectangle(0, 0, self.width, self.height, fill="light sky blue")
+        self.screen.fill((135, 206, 235))  # Light sky blue
+
+    def drawRobber(self, robber_hex):
+        if robber_hex is None or robber_hex not in self.hex_centers:
+            return
+
+        center_x, center_y = self.hex_centers[robber_hex]
+        
+        circle_surface = pygame.Surface((30, 30), pygame.SRCALPHA)
+        circle_surface.fill((0, 0, 0, 0))  # Transparent fill
+
+        # Draw a grey circle
+        pygame.draw.circle(circle_surface, (128, 128, 128, 200), (15, 15), 15)  # Grey color with some transparency
+
+        circle_rect = circle_surface.get_rect(center=(center_x, center_y))
+        self.screen.blit(circle_surface, circle_rect)

@@ -4,6 +4,7 @@ from collections import Counter
 GRAPHICS = True
 VERBOSE = True
 DEBUG = False
+AUTORUN = True
 
 def getColorForPlayer(player):
     return {

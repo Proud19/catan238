@@ -26,6 +26,7 @@ class Hexagon:
         self.Y = Y
         self.resource = resource
         self.diceValue = diceValue
+        self.center = None
 
     def deepCopy(self):
         return Hexagon(self.X, self.Y, self.resource, self.diceValue)
@@ -125,6 +126,13 @@ BeginnerLayout = [
     [None, Tile(ResourceTypes.BRICK, 8), Tile(ResourceTypes.ORE, 5), Tile(ResourceTypes.GRAIN, 2), None]
 ]
 
+class Robber:
+    def __init__(self, initial_hex):
+        self.hex = initial_hex
+
+    def move(self, new_hex):
+        self.hex = new_hex
+
 class Board:
     def __init__(self, layout=None):
         if layout is None:
@@ -184,6 +192,8 @@ class Board:
         else:
             self.visualBoard = None
         self.tiles = [tile for row in self.visualBoard if row for tile in row if tile is not None]
+
+        self.robber = Robber(self.get_desert_hex())
 
     def printData(self):
         print(self.hexagons)
@@ -495,3 +505,18 @@ class Board:
                 start, end = self.getVertexEnds(edge)
                 connected.append(end if start == vertex else start)
         return connected
+    
+    def get_desert_hex(self):
+        for row in self.hexagons:
+            for hex in row:
+                if hex is not None and hex.resource == ResourceTypes.NOTHING:
+                    return hex
+        raise Exception("No desert hex found on the board")
+
+    def get_valid_robber_hexes(self):
+        return [hex for row in self.hexagons for hex in row if hex is not None and hex != self.robber.hex and hex.resource != ResourceTypes.NOTHING]
+
+    def move_robber(self, new_hex):
+        if new_hex not in self.get_valid_robber_hexes():
+            raise ValueError("Invalid hex for robber placement")
+        self.robber.move(new_hex)
