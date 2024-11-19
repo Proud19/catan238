@@ -44,6 +44,10 @@ class GameState:
             for settlement in agent.settlements:
                 legalActions.append((ACTIONS.CITY, settlement))
 
+        if agent.canTrade():
+            for trade in agent.getPossibleTrades():
+                legalActions.append((ACTIONS.TRADE, trade))
+
         return legalActions
 
     def generateSuccessor(self, playerIndex, action):

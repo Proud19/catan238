@@ -174,6 +174,17 @@ class PlayerAgent(object):
             self.numCities += 1
             self.numSettlements -= 1
 
+        if action[0] is ACTIONS.TRADE:
+            give_resource, get_resource = action[1]
+            if give_resource != ResourceTypes.NOTHING and get_resource != ResourceTypes.NOTHING:
+                if self.resources[give_resource] >= 4:
+                    self.resources[give_resource] -= 4
+                    self.resources[get_resource] += 1
+                else:
+                    raise Exception(f"Player {self.agentIndex} doesn't have enough resources to make this trade!")
+            else:
+                raise Exception(f"Cannot trade with NOTHING resource type!")
+
     def updateResources(self, diceRoll, board):
         newResources = Counter(board.getResourcesFromDieRollForPlayer(self.agentIndex, diceRoll))
         self.resources += newResources
@@ -242,6 +253,18 @@ class PlayerAgent(object):
         victim.resources[resource] -= 1
         self.resources[resource] += 1
         return resource
+
+    def canTrade(self):
+        return any(count >= 4 for count in self.resources.values())
+
+    def getPossibleTrades(self):
+        trades = []
+        for give_resource in ResourceTypes:
+            if give_resource != ResourceTypes.NOTHING and self.resources[give_resource] >= 4:
+                for get_resource in ResourceTypes:
+                    if get_resource != ResourceTypes.NOTHING and get_resource != give_resource:
+                        trades.append((give_resource, get_resource))
+        return trades
 
 class PlayerAgentExpectiminimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=3, evalFn=defaultEvalFn):
@@ -315,7 +338,7 @@ class PlayerAgentExpectiminimax(PlayerAgent):
     def filterActions(self, actions):
         filtered_actions = []
         for action in actions:
-            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY]:
+            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY, ACTIONS.TRADE]:
                 filtered_actions.append(action)
         if not filtered_actions:
             for action in actions:
@@ -427,7 +450,7 @@ class PlayerAgentAlphaBeta(PlayerAgent):
     def filterActions(self, actions):
         filtered_actions = []
         for action in actions:
-            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY]:
+            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY, ACTIONS.TRADE]:
                 filtered_actions.append(action)
         if not filtered_actions:
             for action in actions:
@@ -525,7 +548,7 @@ class PlayerAgentExpectimax(PlayerAgent):
     def filterActions(self, actions):
         filtered_actions = []
         for action in actions:
-            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY]:
+            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY, ACTIONS.TRADE]:
                 filtered_actions.append(action)
         if not filtered_actions:
             for action in actions:
