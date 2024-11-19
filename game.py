@@ -1,3 +1,4 @@
+import pygame
 from agents import *
 from board import BeginnerLayout, Board, Edge, Hexagon, Vertex
 from gameConstants import *
@@ -82,15 +83,76 @@ class GameState:
 
 class Game:
     def __init__(self, playerAgentNums=None):
+        pygame.init()
+        self.screen_width = 1020
+        self.screen_height = 800
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        pygame.display.set_caption("Settlers of Catan")
+        self.clock = pygame.time.Clock()
+
         self.moveHistory = []
         self.gameState = GameState()
         self.playerAgentNums = playerAgentNums 
+        self.menu_state = "MAIN"  # Can be "MAIN", "GAME", or "WINNER"
+        
+        self.load_images()
+        self.init_menu()
+
+        # Initialize game-specific variables
+        self.currentAgentIndex = 0
+        self.turnNumber = 1
+    
+    def load_images(self):
+        self.menu_bg = pygame.image.load("resources/menuScreen.gif").convert()
+        self.menu_bg = pygame.transform.scale(self.menu_bg, (self.screen_width, self.screen_height))
+        self.catan_logo = pygame.image.load("resources/catan.gif").convert_alpha()
+        self.winner_bg = pygame.image.load("resources/winner.gif").convert()
+        self.winner_bg = pygame.transform.scale(self.winner_bg, (self.screen_width, self.screen_height))
+
+    def init_menu(self):
+        # Create buttons
+        self.font = pygame.font.Font(None, 36)
+        button_width, button_height = 200, 50
+        self.start_button = pygame.Rect((self.screen_width - button_width) // 2, 300, button_width, button_height)
+        self.quit_button = pygame.Rect((self.screen_width - button_width) // 2, 400, button_width, button_height)
+
+    def draw_menu(self):
+        self.screen.blit(self.menu_bg, (0, 0))
+        pygame.draw.rect(self.screen, (0, 255, 0), self.start_button)
+        pygame.draw.rect(self.screen, (255, 0, 0), self.quit_button)
+        
+        start_text = self.font.render("Start Game", True, (0, 0, 0))
+        quit_text = self.font.render("Quit", True, (0, 0, 0))
+        
+        self.screen.blit(start_text, (self.start_button.x + (self.start_button.width - start_text.get_width()) // 2,
+                                      self.start_button.y + (self.start_button.height - start_text.get_height()) // 2))
+        self.screen.blit(quit_text, (self.quit_button.x + (self.quit_button.width - quit_text.get_width()) // 2,
+                                     self.quit_button.y + (self.quit_button.height - quit_text.get_height()) // 2))
+
+    def draw_winner(self, winner):
+        self.screen.blit(self.winner_bg, (0, 0))
+        winner_text = self.font.render(f"Player {winner} wins!", True, (255, 255, 255))
+        text_rect = winner_text.get_rect(center=(self.screen_width // 2, 200))
+        self.screen.blit(winner_text, text_rect)
+        
+        pygame.draw.rect(self.screen, (0, 255, 0), self.start_button)
+        new_game_text = self.font.render("New Game", True, (0, 0, 0))
+        self.screen.blit(new_game_text, (self.start_button.x + (self.start_button.width - new_game_text.get_width()) // 2,
+                                         self.start_button.y + (self.start_button.height - new_game_text.get_height()) // 2))
+
+    def reset_game(self):
+        self.moveHistory = []
+        self.gameState = GameState()
+        self.currentAgentIndex = 0
+        self.turnNumber = 1
         if GRAPHICS:
-            self.draw = Draw(self.gameState.board.tiles)
+            self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
+        self.initializePlayers()
+        self.initializeSettlementsAndResourcesLumberBrick()
 
     def drawGame(self):
         self.draw.drawBG()
-        self.draw.drawTitle()
+        self.screen.blit(self.catan_logo, (20, 20))  # Draw Catan logo in top-left corner
         self.draw.drawBoard()
         self.draw.drawRoads(self.gameState.board.allRoads, self.gameState.board)
         self.draw.drawSettlements(self.gameState.board.allSettlements)
@@ -196,6 +258,37 @@ class Game:
 
         for agent in self.gameState.playerAgents:
             agent.collectInitialResources(self.gameState.board)
+    
+    def handle_seven_rolled(self, current_player):
+        if VERBOSE:
+            print("A 7 was rolled! Moving the robber...")
+
+        # First, handle discarding
+        for player in self.gameState.playerAgents:
+            discarded = player.discard_half_on_seven()
+            if discarded:
+                if VERBOSE:
+                    print(f"{player.name} discarded {sum(discarded.values())} resources: {discarded}")
+
+        # Now, move the robber
+        new_hex = current_player.choose_robber_placement(self.gameState.board)
+        self.gameState.board.move_robber(new_hex)
+
+        if VERBOSE:
+            print(f"{current_player.name} moved the robber to hex {new_hex}")
+
+        if GRAPHICS:
+            self.drawGame()
+
+        # Steal a resource
+        victims = [p for p in self.gameState.playerAgents 
+                if p != current_player and any(v in self.gameState.board.getVertices(new_hex) 
+                                                for v in p.settlements + p.cities)]
+        if victims:
+            victim = random.choice(victims)
+            stolen_resource = current_player.steal_resource(victim)
+            if VERBOSE and stolen_resource:
+                print(f"{current_player.name} stole a {stolen_resource} from {victim.name}")
 
     def run(self):
         if VERBOSE:
@@ -205,74 +298,120 @@ class Game:
         self.initializePlayers()
         self.initializeSettlementsAndResourcesLumberBrick()
 
-        turnNumber = 1
-        currentAgentIndex = 0
+        running = True
+        while running:
+            if self.menu_state == "MAIN":
+                self.draw_menu()
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        running = False
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        if self.start_button.collidepoint(event.pos):
+                            self.menu_state = "GAME"
+                            self.reset_game()
+                        elif self.quit_button.collidepoint(event.pos):
+                            running = False
 
-        while self.gameState.gameOver() < 0:
-            if GRAPHICS:
-                self.drawGame()
-
-            currentAgent = self.gameState.playerAgents[currentAgentIndex]
-            if VERBOSE:
-                print(f"---------- TURN {turnNumber} --------------")
-                print(f"It's {currentAgent.name}'s turn!")
-                print("PLAYER INFO:")
-                for a in self.gameState.playerAgents:
-                    print(a)
-
-            if GRAPHICS:
-                input("Press ENTER to proceed:")
-
-            diceRoll = self.gameState.diceAgent.rollDice()
-            if VERBOSE:
-                print(f"Rolled a {diceRoll}")
-
-            self.gameState.updatePlayerResourcesForDiceRoll(diceRoll)
-
-            value, action = currentAgent.getAction(self.gameState)
-            if action is not None:
-                self.gameState.applyAction(currentAgentIndex, action)
-
-                if VERBOSE:
-                    print(f"{currentAgent.name} took action {action[0]} at {action[1]}")
-
-                if action[0] == ACTIONS.ROAD and currentAgent.numRoads >= MAX_ROADS:
-                    if VERBOSE:
-                        print(f"{currentAgent.name} has reached the maximum number of roads ({MAX_ROADS}).")
-                elif action[0] == ACTIONS.SETTLE and currentAgent.numSettlements >= MAX_SETTLEMENTS:
-                    if VERBOSE:
-                        print(f"{currentAgent.name} has reached the maximum number of settlements ({MAX_SETTLEMENTS}).")
-                elif action[0] == ACTIONS.CITY and currentAgent.numCities >= MAX_CITIES:
-                    if VERBOSE:
-                        print(f"{currentAgent.name} has reached the maximum number of cities ({MAX_CITIES}).")
-                if GRAPHICS:
+            elif self.menu_state == "GAME":
+                if self.gameState.gameOver() >= 0:
+                    self.menu_state = "WINNER"
+                elif not AUTORUN:
                     self.drawGame()
-            else:
-                if VERBOSE:
-                    print(f"{currentAgent.name} had no actions to take")
+                    waiting_for_input = True
+                    while waiting_for_input:
+                        for event in pygame.event.get():
+                            if event.type == pygame.QUIT:
+                                running = False
+                                waiting_for_input = False
+                            elif event.type == pygame.KEYDOWN:
+                                if event.key == pygame.K_RETURN:
+                                    waiting_for_input = False
+                                    self.run_game_turn()
+                        pygame.display.flip()
+                        self.clock.tick(60)
+                else:
+                    self.run_game_turn()
 
-            self.moveHistory.append((currentAgent.name, action))
-            currentAgentIndex = (currentAgentIndex + 1) % self.gameState.getNumPlayerAgents()
-            turnNumber += 1
+            elif self.menu_state == "WINNER":
+                self.draw_winner(self.gameState.gameOver())
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        running = False
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        if self.start_button.collidepoint(event.pos):
+                            self.menu_state = "MAIN"
+                            self.reset_game()
 
-            if VERBOSE:
-                print("\nUpdated PLAYER INFO:")
-                for a in self.gameState.playerAgents:
-                    print(a)
-                print()
+            pygame.display.flip()
+            self.clock.tick(60)
 
-            if turnNumber > CUTOFF_TURNS:
-                print("Game reached turn limit without a winner.")
-                break
+        pygame.quit()
 
         winner = self.gameState.gameOver()
         if winner < 0:
-            return winner, turnNumber, -1
+            return winner, self.turnNumber, -1
         agentWinner = self.gameState.playerAgents[winner]
         agentLoser = self.gameState.playerAgents[1 - winner]
         if VERBOSE:
             print(f"{agentWinner.name} won the game")
-        return winner, turnNumber, agentWinner.victoryPoints - agentLoser.victoryPoints
+        return winner, self.turnNumber, agentWinner.victoryPoints - agentLoser.victoryPoints
+    
+    def run_game_turn(self):
+        if GRAPHICS and not hasattr(self, 'draw'):
+            self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
+
+        currentAgent = self.gameState.playerAgents[self.currentAgentIndex]
+        if VERBOSE:
+            print(f"---------- TURN {self.turnNumber} --------------")
+            print(f"It's {currentAgent.name}'s turn!")
+            print("PLAYER INFO:")
+            for a in self.gameState.playerAgents:
+                print(a)
+
+        diceRoll = self.gameState.diceAgent.rollDice()
+        if VERBOSE:
+            print(f"Rolled a {diceRoll}")
+
+        if diceRoll == 7:
+            self.handle_seven_rolled(currentAgent)
+        else:
+            self.gameState.updatePlayerResourcesForDiceRoll(diceRoll)
+
+        value, action = currentAgent.getAction(self.gameState)
+        if action is not None:
+            self.gameState.applyAction(self.currentAgentIndex, action)
+
+            if VERBOSE:
+                print(f"{currentAgent.name} took action {action[0]} at {action[1]}")
+
+            if action[0] == ACTIONS.ROAD and currentAgent.numRoads >= MAX_ROADS:
+                if VERBOSE:
+                    print(f"{currentAgent.name} has reached the maximum number of roads ({MAX_ROADS}).")
+            elif action[0] == ACTIONS.SETTLE and currentAgent.numSettlements >= MAX_SETTLEMENTS:
+                if VERBOSE:
+                    print(f"{currentAgent.name} has reached the maximum number of settlements ({MAX_SETTLEMENTS}).")
+            elif action[0] == ACTIONS.CITY and currentAgent.numCities >= MAX_CITIES:
+                if VERBOSE:
+                    print(f"{currentAgent.name} has reached the maximum number of cities ({MAX_CITIES}).")
+            if GRAPHICS:
+                self.drawGame()
+        else:
+            if VERBOSE:
+                print(f"{currentAgent.name} had no actions to take")
+
+        self.moveHistory.append((currentAgent.name, action))
+        self.currentAgentIndex = (self.currentAgentIndex + 1) % self.gameState.getNumPlayerAgents()
+        self.turnNumber += 1
+
+        if VERBOSE:
+            print("\nUpdated PLAYER INFO:")
+            for a in self.gameState.playerAgents:
+                print(a)
+            print()
+
+        if self.turnNumber > CUTOFF_TURNS:
+            print("Game reached turn limit without a winner.")
+            self.menu_state = "WINNER"
 
 def getStringForPlayer(playerCode):
     playerTypes = {
