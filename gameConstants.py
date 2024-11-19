@@ -36,6 +36,7 @@ class ACTIONS(Enum):
     CITY = 2
     ROAD = 3
     TRADE = 4
+    PASS = 5
 
 class ResourceTypes(Enum):
     BRICK = 1

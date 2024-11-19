@@ -266,10 +266,12 @@ class PlayerAgent(object):
                         trades.append((give_resource, get_resource))
         return trades
 
+    def canPass(self):
+        return True  # Passing is always an option
+
 class PlayerAgentExpectiminimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=3, evalFn=defaultEvalFn):
         super(PlayerAgentExpectiminimax, self).__init__(name, agentIndex, color, depth=depth, evalFn=evalFn)
-        self.MAX_DEPTH = 3
         self.TIME_LIMIT = 5  # 5 seconds
 
     def getAction(self, state):
@@ -283,7 +285,7 @@ class PlayerAgentExpectiminimax(PlayerAgent):
                 return float('inf'), None
             elif currState.gameOver() > -1:
                 return float('-inf'), None
-            elif currDepth >= self.MAX_DEPTH:
+            elif currDepth >= self.depth:
                 return self.evaluationFunction(currState, self.agentIndex), None
 
             possibleActions = self.filterActions(currState.getLegalActions(playerIndex))
@@ -299,52 +301,54 @@ class PlayerAgentExpectiminimax(PlayerAgent):
                 bestValue = float('-inf')
                 bestAction = None
                 for currAction in possibleActions:
-                    currVal = 0
-                    for roll, probability in rollProbabilities:
-                        successor = currState.generateSuccessor(playerIndex, currAction)
-                        successor.updatePlayerResourcesForDiceRoll(roll)
-                        value, _ = recurse(successor, newDepth, newPlayerIndex)
-                        if value is None:  # Timeout
-                            return None, None
-                        currVal += probability * value
+                    if currAction[0] == ACTIONS.PASS:
+                        currVal = self.evaluationFunction(currState, self.agentIndex)
+                    else:
+                        currVal = 0
+                        for roll, probability in rollProbabilities:
+                            successor = currState.generateSuccessor(playerIndex, currAction)
+                            successor.updatePlayerResourcesForDiceRoll(roll)
+                            value, _ = recurse(successor, newDepth, playerIndex)  # Continue with same player
+                            if value is None:  # Timeout
+                                return None, None
+                            currVal += probability * value
                     if currVal > bestValue:
                         bestValue = currVal
                         bestAction = currAction
+                    if currAction[0] == ACTIONS.PASS:
+                        break  # If PASS is the best action, no need to check further
                 return bestValue, bestAction
             else:
                 worstValue = float('inf')
                 worstAction = None
                 for currAction in possibleActions:
-                    currVal = 0
-                    for roll, probability in rollProbabilities:
-                        successor = currState.generateSuccessor(playerIndex, currAction)
-                        successor.updatePlayerResourcesForDiceRoll(roll)
-                        value, _ = recurse(successor, newDepth, newPlayerIndex)
-                        if value is None:  # Timeout
-                            return None, None
-                        currVal += probability * value
+                    if currAction[0] == ACTIONS.PASS:
+                        currVal = self.evaluationFunction(currState, self.agentIndex)
+                    else:
+                        currVal = 0
+                        for roll, probability in rollProbabilities:
+                            successor = currState.generateSuccessor(playerIndex, currAction)
+                            successor.updatePlayerResourcesForDiceRoll(roll)
+                            value, _ = recurse(successor, newDepth, playerIndex)  # Continue with same player
+                            if value is None:  # Timeout
+                                return None, None
+                            currVal += probability * value
                     if currVal < worstValue:
                         worstValue = currVal
                         worstAction = currAction
+                    if currAction[0] == ACTIONS.PASS:
+                        break  # If PASS is the worst action, no need to check further
                 return worstValue, worstAction
 
         value, action = recurse(state, 0, self.agentIndex)
         if value is None or action is None:
-            # If we've timed out, just return a random action
-            possibleActions = state.getLegalActions(self.agentIndex)
-            return 0, random.choice(possibleActions) if possibleActions else None
+            # If we've timed out, just return PASS
+            return 0, (ACTIONS.PASS, None)
         return value, action
 
     def filterActions(self, actions):
-        filtered_actions = []
-        for action in actions:
-            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY, ACTIONS.TRADE]:
-                filtered_actions.append(action)
-        if not filtered_actions:
-            for action in actions:
-                if action[0] == ACTIONS.ROAD:
-                    filtered_actions.append(action)
-        return filtered_actions if filtered_actions else actions
+        filtered_actions = actions + [(ACTIONS.PASS, None)]
+        return filtered_actions
     
     def choose_cards_to_discard(self, discard_count):
         # Implement a smarter discarding strategy here
@@ -375,7 +379,6 @@ class PlayerAgentExpectiminimax(PlayerAgent):
 class PlayerAgentAlphaBeta(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=3, evalFn=defaultEvalFn):
         super(PlayerAgentAlphaBeta, self).__init__(name, agentIndex, color, depth, evalFn=evalFn)
-        self.MAX_DEPTH = 3
         self.TIME_LIMIT = 5  # 5 seconds
 
     def getAction(self, state):
@@ -389,7 +392,7 @@ class PlayerAgentAlphaBeta(PlayerAgent):
                 return float('inf'), None
             elif currState.gameOver() > -1:
                 return float('-inf'), None
-            elif currDepth >= self.MAX_DEPTH:
+            elif currDepth >= self.depth:
                 return self.evaluationFunction(currState, self.agentIndex), None
 
             possibleActions = self.filterActions(currState.getLegalActions(playerIndex))
@@ -405,74 +408,81 @@ class PlayerAgentAlphaBeta(PlayerAgent):
                 bestValue = float('-inf')
                 bestAction = None
                 for currAction in possibleActions:
-                    currVal = 0
-                    for roll, probability in rollProbabilities:
-                        successor = currState.generateSuccessor(playerIndex, currAction)
-                        successor.updatePlayerResourcesForDiceRoll(roll)
-                        value, _ = recurse(successor, newDepth, newPlayerIndex, alpha, beta)
-                        if value is None:  # Timeout
-                            return None, None
-                        currVal += probability * value
+                    if currAction[0] == ACTIONS.PASS:
+                        currVal = self.evaluationFunction(currState, self.agentIndex)
+                    else:
+                        currVal = 0
+                        for roll, probability in rollProbabilities:
+                            successor = currState.generateSuccessor(playerIndex, currAction)
+                            successor.updatePlayerResourcesForDiceRoll(roll)
+                            value, _ = recurse(successor, newDepth, playerIndex, alpha, beta)
+                            if value is None:  # Timeout
+                                return None, None
+                            currVal += probability * value
                     if currVal > bestValue:
                         bestValue = currVal
                         bestAction = currAction
                     alpha = max(alpha, bestValue)
                     if beta <= alpha:
                         break
+                    if currAction[0] == ACTIONS.PASS:
+                        break  # If PASS is the best action, no need to check further
                 return bestValue, bestAction
             else:
                 worstValue = float('inf')
                 worstAction = None
                 for currAction in possibleActions:
-                    currVal = 0
-                    for roll, probability in rollProbabilities:
-                        successor = currState.generateSuccessor(playerIndex, currAction)
-                        successor.updatePlayerResourcesForDiceRoll(roll)
-                        value, _ = recurse(successor, newDepth, newPlayerIndex, alpha, beta)
-                        if value is None:  # Timeout
-                            return None, None
-                        currVal += probability * value
+                    if currAction[0] == ACTIONS.PASS:
+                        currVal = self.evaluationFunction(currState, self.agentIndex)
+                    else:
+                        currVal = 0
+                        for roll, probability in rollProbabilities:
+                            successor = currState.generateSuccessor(playerIndex, currAction)
+                            successor.updatePlayerResourcesForDiceRoll(roll)
+                            value, _ = recurse(successor, newDepth, playerIndex, alpha, beta)
+                            if value is None:  # Timeout
+                                return None, None
+                            currVal += probability * value
                     if currVal < worstValue:
                         worstValue = currVal
                         worstAction = currAction
                     beta = min(beta, worstValue)
                     if beta <= alpha:
                         break
+                    if currAction[0] == ACTIONS.PASS:
+                        break  # If PASS is the worst action, no need to check further
                 return worstValue, worstAction
 
         value, action = recurse(state, 0, self.agentIndex, float("-inf"), float("inf"))
         if value is None or action is None:
-            # If we've timed out, just return a random action
-            possibleActions = state.getLegalActions(self.agentIndex)
-            return 0, random.choice(possibleActions) if possibleActions else None
+            # If we've timed out, just return PASS
+            return 0, (ACTIONS.PASS, None)
         return value, action
 
     def filterActions(self, actions):
-        filtered_actions = []
-        for action in actions:
-            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY, ACTIONS.TRADE]:
-                filtered_actions.append(action)
-        if not filtered_actions:
-            for action in actions:
-                if action[0] == ACTIONS.ROAD:
-                    filtered_actions.append(action)
-        return filtered_actions if filtered_actions else actions
+        filtered_actions = actions + [(ACTIONS.PASS, None)]
+        return filtered_actions
 
 class PlayerAgentRandom(PlayerAgent):
     def getAction(self, state):
         possibleActions = state.getLegalActions(self.agentIndex)
         if possibleActions:
+            possibleActions.append((ACTIONS.PASS, None))  # Add PASS as a possible action
             chosenAction = random.choice(possibleActions)
             return (0, chosenAction)
-        return (0, None)
+        return (0, (ACTIONS.PASS, None))
 
     def canTakeAction(self, action):
-        if action == ACTIONS.ROAD:
+        if action[0] == ACTIONS.ROAD:
             return self.canBuildRoad()
-        elif action == ACTIONS.SETTLE:
+        elif action[0] == ACTIONS.SETTLE:
             return self.canSettle()
-        elif action == ACTIONS.CITY:
+        elif action[0] == ACTIONS.CITY:
             return self.canBuildCity()
+        elif action[0] == ACTIONS.TRADE:
+            return self.canTrade()
+        elif action[0] == ACTIONS.PASS:
+            return self.canPass()
         return False
 
     def choose_robber_placement(self, board):
@@ -482,7 +492,6 @@ class PlayerAgentRandom(PlayerAgent):
 class PlayerAgentExpectimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn=defaultEvalFn):
         super(PlayerAgentExpectimax, self).__init__(name, agentIndex, color, depth, evalFn=evalFn)
-        self.MAX_DEPTH = 3
         self.TIME_LIMIT = 5  # 5 seconds
 
     def getAction(self, state):
@@ -496,7 +505,7 @@ class PlayerAgentExpectimax(PlayerAgent):
                 return float('inf'), None
             elif currState.gameOver() > -1:
                 return float('-inf'), None
-            elif currDepth >= self.MAX_DEPTH:
+            elif currDepth >= self.depth:
                 return self.evaluationFunction(currState, self.agentIndex), None
 
             possibleActions = self.filterActions(currState.getLegalActions(playerIndex))
@@ -512,46 +521,48 @@ class PlayerAgentExpectimax(PlayerAgent):
                 bestValue = float('-inf')
                 bestAction = None
                 for currAction in possibleActions:
-                    currVal = 0
-                    for roll, probability in rollProbabilities:
-                        successor = currState.generateSuccessor(playerIndex, currAction)
-                        successor.updatePlayerResourcesForDiceRoll(roll)
-                        value, _ = recurse(successor, newDepth, newPlayerIndex)
-                        if value is None:  # Timeout
-                            return None, None
-                        currVal += probability * value
+                    if currAction[0] == ACTIONS.PASS:
+                        currVal = self.evaluationFunction(currState, self.agentIndex)
+                    else:
+                        currVal = 0
+                        for roll, probability in rollProbabilities:
+                            successor = currState.generateSuccessor(playerIndex, currAction)
+                            successor.updatePlayerResourcesForDiceRoll(roll)
+                            value, _ = recurse(successor, newDepth, playerIndex)
+                            if value is None:  # Timeout
+                                return None, None
+                            currVal += probability * value
                     if currVal > bestValue:
                         bestValue = currVal
                         bestAction = currAction
+                    if currAction[0] == ACTIONS.PASS:
+                        break  # If PASS is the best action, no need to check further
                 return bestValue, bestAction
             else:
                 totalValue = 0
                 for currAction in possibleActions:
-                    currVal = 0
-                    for roll, probability in rollProbabilities:
-                        successor = currState.generateSuccessor(playerIndex, currAction)
-                        successor.updatePlayerResourcesForDiceRoll(roll)
-                        value, _ = recurse(successor, newDepth, newPlayerIndex)
-                        if value is None:  # Timeout
-                            return None, None
-                        currVal += probability * value
+                    if currAction[0] == ACTIONS.PASS:
+                        currVal = self.evaluationFunction(currState, self.agentIndex)
+                    else:
+                        currVal = 0
+                        for roll, probability in rollProbabilities:
+                            successor = currState.generateSuccessor(playerIndex, currAction)
+                            successor.updatePlayerResourcesForDiceRoll(roll)
+                            value, _ = recurse(successor, newDepth, playerIndex)
+                            if value is None:  # Timeout
+                                return None, None
+                            currVal += probability * value
                     totalValue += currVal
+                    if currAction[0] == ACTIONS.PASS:
+                        break  # If PASS is an option, no need to check further
                 return totalValue / len(possibleActions), None
 
         value, action = recurse(state, 0, self.agentIndex)
         if value is None or action is None:
-            # If we've timed out, just return a random action
-            possibleActions = state.getLegalActions(self.agentIndex)
-            return 0, random.choice(possibleActions) if possibleActions else None
+            # If we've timed out, just return PASS
+            return 0, (ACTIONS.PASS, None)
         return value, action
 
     def filterActions(self, actions):
-        filtered_actions = []
-        for action in actions:
-            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY, ACTIONS.TRADE]:
-                filtered_actions.append(action)
-        if not filtered_actions:
-            for action in actions:
-                if action[0] == ACTIONS.ROAD:
-                    filtered_actions.append(action)
-        return filtered_actions if filtered_actions else actions
+        filtered_actions = actions + [(ACTIONS.PASS, None)]
+        return filtered_actions
