@@ -48,6 +48,8 @@ class GameState:
             for trade in agent.getPossibleTrades():
                 legalActions.append((ACTIONS.TRADE, trade))
 
+        legalActions.append((ACTIONS.PASS, None))
+
         return legalActions
 
     def generateSuccessor(self, playerIndex, action):
@@ -381,29 +383,24 @@ class Game:
         else:
             self.gameState.updatePlayerResourcesForDiceRoll(diceRoll)
 
-        value, action = currentAgent.getAction(self.gameState)
-        if action is not None:
-            self.gameState.applyAction(self.currentAgentIndex, action)
+        actions_taken = []
+        while True:
+            value, action = currentAgent.getAction(self.gameState)
+            if action[0] == ACTIONS.PASS:
+                if VERBOSE:
+                    print(f"{currentAgent.name} chose to pass.")
+                break
+
+            self.gameState.applyAction( self.currentAgentIndex, action)
+            actions_taken.append(action)
 
             if VERBOSE:
                 print(f"{currentAgent.name} took action {action[0]} at {action[1]}")
 
-            if action[0] == ACTIONS.ROAD and currentAgent.numRoads >= MAX_ROADS:
-                if VERBOSE:
-                    print(f"{currentAgent.name} has reached the maximum number of roads ({MAX_ROADS}).")
-            elif action[0] == ACTIONS.SETTLE and currentAgent.numSettlements >= MAX_SETTLEMENTS:
-                if VERBOSE:
-                    print(f"{currentAgent.name} has reached the maximum number of settlements ({MAX_SETTLEMENTS}).")
-            elif action[0] == ACTIONS.CITY and currentAgent.numCities >= MAX_CITIES:
-                if VERBOSE:
-                    print(f"{currentAgent.name} has reached the maximum number of cities ({MAX_CITIES}).")
             if GRAPHICS:
                 self.drawGame()
-        else:
-            if VERBOSE:
-                print(f"{currentAgent.name} had no actions to take")
 
-        self.moveHistory.append((currentAgent.name, action))
+        self.moveHistory.append((currentAgent.name, actions_taken))
         self.currentAgentIndex = (self.currentAgentIndex + 1) % self.gameState.getNumPlayerAgents()
         self.turnNumber += 1
 
