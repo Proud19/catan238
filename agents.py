@@ -2,6 +2,7 @@ from collections import Counter
 import copy
 from gameConstants import *
 import random
+import time
 
 def builderEvalFn(currentGameState, currentPlayerIndex):
     currentPlayer = currentGameState.playerAgents[currentPlayerIndex]
@@ -129,7 +130,7 @@ class PlayerAgent(object):
         newCopy.longestRoadLength = self.longestRoadLength
         return newCopy
 
-    def applyAction(self, action, board, gameState):
+    def applyAction(self, action, board, gameState=None):
         if action is None:
             return
 
@@ -153,7 +154,8 @@ class PlayerAgent(object):
             self.roads.append(road)
             self.resources.subtract(ROAD_COST)
             self.numRoads += 1
-            self.updateLongestRoad(board, gameState)
+            if gameState:
+                self.updateLongestRoad(board, gameState)
 
         if action[0] is ACTIONS.CITY:
             if not self.canBuildCity():
@@ -242,62 +244,84 @@ class PlayerAgent(object):
         return resource
 
 class PlayerAgentExpectiminimax(PlayerAgent):
-    def __init__(self, name, agentIndex, color, depth = 3, evalFn = defaultEvalFn):
+    def __init__(self, name, agentIndex, color, depth=3, evalFn=defaultEvalFn):
         super(PlayerAgentExpectiminimax, self).__init__(name, agentIndex, color, depth=depth, evalFn=evalFn)
+        self.MAX_DEPTH = 3
+        self.TIME_LIMIT = 5  # 5 seconds
 
     def getAction(self, state):
-        def recurse(currState, currDepth, playerIndex):
-            if currState.gameOver() == playerIndex:
-                return float('inf')
-            elif currState.gameOver() > -1:
-                return float('-inf')
-            elif currDepth == 0:
-                return self.evaluationFunction(currState, self.agentIndex)
+        start_time = time.time()
 
-            possibleActions = currState.getLegalActions(playerIndex)
+        def recurse(currState, currDepth, playerIndex):
+            if time.time() - start_time > self.TIME_LIMIT:
+                return None, None  # Timeout
+
+            if currState.gameOver() == playerIndex:
+                return float('inf'), None
+            elif currState.gameOver() > -1:
+                return float('-inf'), None
+            elif currDepth >= self.MAX_DEPTH:
+                return self.evaluationFunction(currState, self.agentIndex), None
+
+            possibleActions = self.filterActions(currState.getLegalActions(playerIndex))
 
             if len(possibleActions) == 0:
-                return self.evaluationFunction(currState, self.agentIndex)
+                return self.evaluationFunction(currState, self.agentIndex), None
 
             rollProbabilities = currState.diceAgent.getRollDistribution()
-            newDepth = currDepth - 1 if playerIndex != self.agentIndex else currDepth
+            newDepth = currDepth + 1
             newPlayerIndex = (playerIndex + 1) % currState.getNumPlayerAgents()
-            vals = []
 
-            for currAction in possibleActions:
-                currVal = 0
-                for roll, probability in rollProbabilities:
-                    successor = currState.generateSuccessor(playerIndex, currAction)
-                    successor.updatePlayerResourcesForDiceRoll(roll)
-                    value = recurse(successor, newDepth, newPlayerIndex)
-                    currVal += probability * value
-                vals.append(currVal)
+            if playerIndex == self.agentIndex:
+                bestValue = float('-inf')
+                bestAction = None
+                for currAction in possibleActions:
+                    currVal = 0
+                    for roll, probability in rollProbabilities:
+                        successor = currState.generateSuccessor(playerIndex, currAction)
+                        successor.updatePlayerResourcesForDiceRoll(roll)
+                        value, _ = recurse(successor, newDepth, newPlayerIndex)
+                        if value is None:  # Timeout
+                            return None, None
+                        currVal += probability * value
+                    if currVal > bestValue:
+                        bestValue = currVal
+                        bestAction = currAction
+                return bestValue, bestAction
+            else:
+                worstValue = float('inf')
+                worstAction = None
+                for currAction in possibleActions:
+                    currVal = 0
+                    for roll, probability in rollProbabilities:
+                        successor = currState.generateSuccessor(playerIndex, currAction)
+                        successor.updatePlayerResourcesForDiceRoll(roll)
+                        value, _ = recurse(successor, newDepth, newPlayerIndex)
+                        if value is None:  # Timeout
+                            return None, None
+                        currVal += probability * value
+                    if currVal < worstValue:
+                        worstValue = currVal
+                        worstAction = currAction
+                return worstValue, worstAction
 
-            return max(vals) if playerIndex == self.agentIndex else min(vals)
+        value, action = recurse(state, 0, self.agentIndex)
+        if value is None or action is None:
+            # If we've timed out, just return a random action
+            possibleActions = state.getLegalActions(self.agentIndex)
+            return 0, random.choice(possibleActions) if possibleActions else None
+        return value, action
 
-        if state.gameOver() == self.agentIndex:
-            return (float('inf'), None)
-        elif state.gameOver() > -1:
-            return (float('-inf'), None)
-        elif self.depth == 0:
-            return (self.evaluationFunction(state, self.agentIndex), None)
-
-        possibleActions = state.getLegalActions(self.agentIndex)
-
-        if len(possibleActions) == 0:
-            return (self.evaluationFunction(state, self.agentIndex), None)
-
-        vals = []
-        actions = []
-        newPlayerIndex = (self.agentIndex + 1) % state.getNumPlayerAgents()
-
-        for currAction in possibleActions:
-            successor = state.generateSuccessor(self.agentIndex, currAction)
-            value = recurse(successor, self.depth, newPlayerIndex)
-            vals.append(value)
-            actions.append(currAction)
-
-        return (max(vals), actions[vals.index(max(vals))])
+    def filterActions(self, actions):
+        filtered_actions = []
+        for action in actions:
+            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY]:
+                filtered_actions.append(action)
+        if not filtered_actions:
+            for action in actions:
+                if action[0] == ACTIONS.ROAD:
+                    filtered_actions.append(action)
+        return filtered_actions if filtered_actions else actions
     
     def choose_cards_to_discard(self, discard_count):
         # Implement a smarter discarding strategy here
@@ -326,71 +350,90 @@ class PlayerAgentExpectiminimax(PlayerAgent):
         return discarded
 
 class PlayerAgentAlphaBeta(PlayerAgent):
-    def __init__(self, name, agentIndex, color, depth = 3, evalFn = defaultEvalFn):
+    def __init__(self, name, agentIndex, color, depth=3, evalFn=defaultEvalFn):
         super(PlayerAgentAlphaBeta, self).__init__(name, agentIndex, color, depth, evalFn=evalFn)
+        self.MAX_DEPTH = 3
+        self.TIME_LIMIT = 5  # 5 seconds
 
     def getAction(self, state):
-        def recurse(currState, currDepth, playerIndex, alpha, beta):
-            if currState.gameOver() == playerIndex:
-                return (float('inf'), None)
-            elif currState.gameOver() > -1:
-                return (float('-inf'), None)
-            elif currDepth == 0:
-                return (self.evaluationFunction(currState, self.agentIndex), None)
+        start_time = time.time()
 
-            possibleActions = currState.getLegalActions(playerIndex)
+        def recurse(currState, currDepth, playerIndex, alpha, beta):
+            if time.time() - start_time > self.TIME_LIMIT:
+                return None, None  # Timeout
+
+            if currState.gameOver() == playerIndex:
+                return float('inf'), None
+            elif currState.gameOver() > -1:
+                return float('-inf'), None
+            elif currDepth >= self.MAX_DEPTH:
+                return self.evaluationFunction(currState, self.agentIndex), None
+
+            possibleActions = self.filterActions(currState.getLegalActions(playerIndex))
 
             if len(possibleActions) == 0:
-                return (self.evaluationFunction(currState, self.agentIndex), None)
+                return self.evaluationFunction(currState, self.agentIndex), None
 
             rollProbabilities = currState.diceAgent.getRollDistribution()
-            newDepth = currDepth - 1 if playerIndex != self.agentIndex else currDepth
+            newDepth = currDepth + 1
             newPlayerIndex = (playerIndex + 1) % currState.getNumPlayerAgents()
 
-            if playerIndex == 0:
-                best = (float('-inf'), None)
+            if playerIndex == self.agentIndex:
+                bestValue = float('-inf')
+                bestAction = None
                 for currAction in possibleActions:
                     currVal = 0
                     for roll, probability in rollProbabilities:
                         successor = currState.generateSuccessor(playerIndex, currAction)
                         successor.updatePlayerResourcesForDiceRoll(roll)
                         value, _ = recurse(successor, newDepth, newPlayerIndex, alpha, beta)
+                        if value is None:  # Timeout
+                            return None, None
                         currVal += probability * value
-                    if currVal > best[0]:
-                        best = (currVal, currAction)
-                    alpha = max(alpha, currVal)
+                    if currVal > bestValue:
+                        bestValue = currVal
+                        bestAction = currAction
+                    alpha = max(alpha, bestValue)
                     if beta <= alpha:
                         break
-                return best
+                return bestValue, bestAction
             else:
-                best = (float('inf'), None)
+                worstValue = float('inf')
+                worstAction = None
                 for currAction in possibleActions:
                     currVal = 0
                     for roll, probability in rollProbabilities:
                         successor = currState.generateSuccessor(playerIndex, currAction)
                         successor.updatePlayerResourcesForDiceRoll(roll)
                         value, _ = recurse(successor, newDepth, newPlayerIndex, alpha, beta)
+                        if value is None:  # Timeout
+                            return None, None
                         currVal += probability * value
-                    if currVal < best[0]:
-                        best = (currVal, currAction)
-                    beta = min(beta, currVal)
+                    if currVal < worstValue:
+                        worstValue = currVal
+                        worstAction = currAction
+                    beta = min(beta, worstValue)
                     if beta <= alpha:
                         break
-                return best
+                return worstValue, worstAction
 
-        if state.gameOver() == self.agentIndex:
-            return (float('inf'), None)
-        elif state.gameOver() > -1:
-            return (float('-inf'), None)
-        elif self.depth == 0:
-            return (self.evaluationFunction(state, self.agentIndex), None)
+        value, action = recurse(state, 0, self.agentIndex, float("-inf"), float("inf"))
+        if value is None or action is None:
+            # If we've timed out, just return a random action
+            possibleActions = state.getLegalActions(self.agentIndex)
+            return 0, random.choice(possibleActions) if possibleActions else None
+        return value, action
 
-        possibleActions = state.getLegalActions(self.agentIndex)
-
-        if len(possibleActions) == 0:
-            return (self.evaluationFunction(state, self.agentIndex), None)
-
-        return recurse(state, self.depth, self.agentIndex, float("-inf"), float("inf"))
+    def filterActions(self, actions):
+        filtered_actions = []
+        for action in actions:
+            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY]:
+                filtered_actions.append(action)
+        if not filtered_actions:
+            for action in actions:
+                if action[0] == ACTIONS.ROAD:
+                    filtered_actions.append(action)
+        return filtered_actions if filtered_actions else actions
 
 class PlayerAgentRandom(PlayerAgent):
     def getAction(self, state):
@@ -414,59 +457,78 @@ class PlayerAgentRandom(PlayerAgent):
         return random.choice(valid_hexes)
 
 class PlayerAgentExpectimax(PlayerAgent):
-    def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn = defaultEvalFn):
+    def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn=defaultEvalFn):
         super(PlayerAgentExpectimax, self).__init__(name, agentIndex, color, depth, evalFn=evalFn)
+        self.MAX_DEPTH = 3
+        self.TIME_LIMIT = 5  # 5 seconds
 
     def getAction(self, state):
-        def recurse(currState, currDepth, playerIndex):
-            if currState.gameOver() == playerIndex:
-                return float('inf')
-            elif currState.gameOver() > -1:
-                return float('-inf')
-            elif currDepth == 0:
-                return self.evaluationFunction(currState, self.agentIndex)
+        start_time = time.time()
 
-            possibleActions = currState.getLegalActions(playerIndex)
+        def recurse(currState, currDepth, playerIndex):
+            if time.time() - start_time > self.TIME_LIMIT:
+                return None, None  # Timeout
+
+            if currState.gameOver() == playerIndex:
+                return float('inf'), None
+            elif currState.gameOver() > -1:
+                return float('-inf'), None
+            elif currDepth >= self.MAX_DEPTH:
+                return self.evaluationFunction(currState, self.agentIndex), None
+
+            possibleActions = self.filterActions(currState.getLegalActions(playerIndex))
 
             if len(possibleActions) == 0:
-                return self.evaluationFunction(currState, self.agentIndex)
+                return self.evaluationFunction(currState, self.agentIndex), None
 
             rollProbabilities = currState.diceAgent.getRollDistribution()
-            newDepth = currDepth - 1 if playerIndex != self.agentIndex else currDepth
+            newDepth = currDepth + 1
             newPlayerIndex = (playerIndex + 1) % currState.getNumPlayerAgents()
-            vals = []
 
-            for currAction in possibleActions:
-                currVal = 0
-                for roll, probability in rollProbabilities:
-                    successor = currState.generateSuccessor(playerIndex, currAction)
-                    successor.updatePlayerResourcesForDiceRoll(roll)
-                    value = recurse(successor, newDepth, newPlayerIndex)
-                    currVal += probability * value
-                vals.append(currVal)
+            if playerIndex == self.agentIndex:
+                bestValue = float('-inf')
+                bestAction = None
+                for currAction in possibleActions:
+                    currVal = 0
+                    for roll, probability in rollProbabilities:
+                        successor = currState.generateSuccessor(playerIndex, currAction)
+                        successor.updatePlayerResourcesForDiceRoll(roll)
+                        value, _ = recurse(successor, newDepth, newPlayerIndex)
+                        if value is None:  # Timeout
+                            return None, None
+                        currVal += probability * value
+                    if currVal > bestValue:
+                        bestValue = currVal
+                        bestAction = currAction
+                return bestValue, bestAction
+            else:
+                totalValue = 0
+                for currAction in possibleActions:
+                    currVal = 0
+                    for roll, probability in rollProbabilities:
+                        successor = currState.generateSuccessor(playerIndex, currAction)
+                        successor.updatePlayerResourcesForDiceRoll(roll)
+                        value, _ = recurse(successor, newDepth, newPlayerIndex)
+                        if value is None:  # Timeout
+                            return None, None
+                        currVal += probability * value
+                    totalValue += currVal
+                return totalValue / len(possibleActions), None
 
-            return max(vals) if playerIndex == self.agentIndex else sum(vals) / len(vals)
+        value, action = recurse(state, 0, self.agentIndex)
+        if value is None or action is None:
+            # If we've timed out, just return a random action
+            possibleActions = state.getLegalActions(self.agentIndex)
+            return 0, random.choice(possibleActions) if possibleActions else None
+        return value, action
 
-        if state.gameOver() == self.agentIndex:
-            return (float('inf'), None)
-        elif state.gameOver() > -1:
-            return (float('-inf'), None)
-        elif self.depth == 0:
-            return (self.evaluationFunction(state, self.agentIndex), None)
-
-        possibleActions = state.getLegalActions(self.agentIndex)
-
-        if len(possibleActions) == 0:
-            return (self.evaluationFunction(state, self.agentIndex), None)
-
-        vals = []
-        actions = []
-        newPlayerIndex = (self.agentIndex + 1) % state.getNumPlayerAgents()
-
-        for currAction in possibleActions:
-            successor = state.generateSuccessor(self.agentIndex, currAction)
-            value = recurse(successor, self.depth, newPlayerIndex)
-            vals.append(value)
-            actions.append(currAction)
-
-        return (max(vals), actions[vals.index(max(vals))])
+    def filterActions(self, actions):
+        filtered_actions = []
+        for action in actions:
+            if action[0] in [ACTIONS.SETTLE, ACTIONS.CITY]:
+                filtered_actions.append(action)
+        if not filtered_actions:
+            for action in actions:
+                if action[0] == ACTIONS.ROAD:
+                    filtered_actions.append(action)
+        return filtered_actions if filtered_actions else actions
