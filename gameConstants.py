@@ -37,6 +37,8 @@ class ACTIONS(Enum):
     ROAD = 3
     TRADE = 4
     PASS = 5
+    BUY_DEV_CARD = 6
+    PLAY_KNIGHT = 7
 
 class ResourceTypes(Enum):
     BRICK = 1
@@ -62,6 +64,16 @@ BANK_RESOURCES = {
 ROAD_COST = Counter({ResourceTypes.BRICK: 1, ResourceTypes.LUMBER: 1})
 SETTLEMENT_COST = Counter({ResourceTypes.LUMBER: 1, ResourceTypes.BRICK: 1, ResourceTypes.WOOL: 1, ResourceTypes.GRAIN: 1})
 CITY_COST = Counter({ResourceTypes.GRAIN: 2, ResourceTypes.ORE: 3})
+DEV_CARD_COST = Counter({ResourceTypes.GRAIN: 1, ResourceTypes.WOOL: 1, ResourceTypes.ORE: 1})
+
+class DevCardTypes(Enum):
+    KNIGHT = 1
+    VICTORY_POINT = 2
+
+DEV_CARD_DECK = [DevCardTypes.KNIGHT] * 14 + [DevCardTypes.VICTORY_POINT] * 5
+
+LARGEST_ARMY_POINTS = 2
+LARGEST_ARMY_REQUIREMENT = 3
 
 # A dictionary from resource type (enum, above) to string representation
 # so we can print out the resource type easily

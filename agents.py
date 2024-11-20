@@ -53,6 +53,25 @@ class DiceAgent:
     def deepCopy(self):
         return DiceAgent()
 
+class DevCard:
+    def __init__(self, card_type):
+        self.type = card_type
+        self.can_be_used = False
+        self.has_been_used = False
+
+    def make_usable(self):
+        self.can_be_used = True
+
+    def use(self):
+        if self.can_be_used and not self.has_been_used:
+            self.has_been_used = True
+            return True
+        return False
+    
+    def __repr__(self):
+        status = "Usable" if self.can_be_used and not self.has_been_used else "Used" if self.has_been_used else "Not Usable"
+        return f"{self.type.name} ({status})"
+
 class PlayerAgent(object):
     def __init__(self, name, agentIndex, color, depth=3, evalFn=defaultEvalFn):
         self.agentType = AGENT.PLAYER_AGENT
@@ -82,6 +101,10 @@ class PlayerAgent(object):
             ResourceTypes.LUMBER: 0,
         })
 
+        self.dev_cards = []
+        self.played_knights = 0
+        self.has_largest_army = False
+
     def __repr__(self):
         s = f"---------- {self.name} : {self.color} ----------\n"
         s += f"Victory points: {self.victoryPoints}\n"
@@ -89,6 +112,19 @@ class PlayerAgent(object):
         s += f"Settlements ({self.numSettlements}/{MAX_SETTLEMENTS}): {self.settlements}\n"
         s += f"Roads ({self.numRoads}/{MAX_ROADS}): {self.roads}\n"
         s += f"Cities ({self.numCities}/{MAX_CITIES}): {self.cities}\n"
+        
+        # Add Development Cards information
+        s += "Development Cards:\n"
+        for card in self.dev_cards:
+            status = "Usable" if card.can_be_used and not card.has_been_used else "Used" if card.has_been_used else "Not Usable"
+            s += f"  - {card.type.name}: {status}\n"
+        
+        # Add Largest Army and Longest Road information
+        if self.has_largest_army:
+            s += "Has Largest Army\n"
+        if self.hasLongestRoad:
+            s += "Has Longest Road\n"
+        
         s += "--------------------------------------------\n"
         return s
 
@@ -134,7 +170,7 @@ class PlayerAgent(object):
         if action is None:
             return
 
-        if action[0] is ACTIONS.SETTLE:
+        elif action[0] is ACTIONS.SETTLE:
             if not self.canSettle():
                 raise Exception(f"Player {self.agentIndex} doesn't have enough resources to build a settlement!")
             
@@ -146,7 +182,7 @@ class PlayerAgent(object):
             self.victoryPoints += SETTLEMENT_VICTORY_POINTS
             self.numSettlements += 1
 
-        if action[0] is ACTIONS.ROAD:
+        elif action[0] is ACTIONS.ROAD:
             if not self.canBuildRoad():
                 raise Exception(f"Player {self.agentIndex} doesn't have enough resources to build a road!")
 
@@ -157,7 +193,7 @@ class PlayerAgent(object):
             gameState.bank.update(ROAD_COST)  # Add resources back to the bank
             self.numRoads += 1
 
-        if action[0] is ACTIONS.CITY:
+        elif action[0] is ACTIONS.CITY:
             if not self.canBuildCity():
                 raise Exception(f"Player {self.agentIndex} doesn't have enough resources to build a city!")
             
@@ -175,7 +211,7 @@ class PlayerAgent(object):
             self.numCities += 1
             self.numSettlements -= 1
 
-        if action[0] is ACTIONS.TRADE:
+        elif action[0] is ACTIONS.TRADE:
             give_resource, get_resource = action[1]
             if give_resource != ResourceTypes.NOTHING and get_resource != ResourceTypes.NOTHING:
                 if self.resources[give_resource] >= 4 and gameState.bank[get_resource] > 0:
@@ -187,6 +223,32 @@ class PlayerAgent(object):
                     raise Exception(f"Player {self.agentIndex} doesn't have enough resources to make this trade or bank is out of the requested resource!")
             else:
                 raise Exception(f"Cannot trade with NOTHING resource type!")
+
+        elif action[0] is ACTIONS.BUY_DEV_CARD:
+            if not self.canBuyDevCard(gameState):
+                raise Exception(f"Player {self.agentIndex} doesn't have enough resources to buy a dev card!")
+            self.resources.subtract(DEV_CARD_COST)
+            gameState.bank.update(DEV_CARD_COST)
+            card = gameState.drawDevCard()
+            if card is not None:
+                new_card = DevCard(card)
+                self.dev_cards.append(new_card)
+                if card == DevCardTypes.VICTORY_POINT:
+                    self.victoryPoints += 1
+                print(f"Player {self.agentIndex} bought a development card: {card}")
+            else:
+                print(f"No development cards left in the deck.")
+
+        elif action[0] is ACTIONS.PLAY_KNIGHT:
+            knight_card = next((card for card in self.dev_cards if card.type == DevCardTypes.KNIGHT and card.can_be_used), None)
+            if knight_card is None or not knight_card.use():
+                raise Exception(f"Player {self.agentIndex} can't play a Knight card!")
+            self.dev_cards.remove(knight_card)
+            self.played_knights += 1
+            new_hex = action[1]
+            gameState.move_robber_and_steal(self, new_hex)
+            self.updateLargestArmy(gameState)
+
 
     def updateResources(self, diceRoll, board):
         newResources = Counter(board.getResourcesFromDieRollForPlayer(self.agentIndex, diceRoll))
@@ -265,7 +327,7 @@ class PlayerAgent(object):
     def steal_resource(self, victim):
         if not victim.resources or sum(victim.resources.values()) == 0:
             return None
-        resource = random.choice(list(victim.resources.elements()))
+        resource = random.choice([r for r in victim.resources.elements()])
         victim.resources[resource] -= 1
         self.resources[resource] += 1
         return resource
@@ -293,6 +355,31 @@ class PlayerAgent(object):
         return trades
     def canPass(self):
         return True  # Passing is always an option
+
+    def canBuyDevCard(self, gameState):
+        return (self.resources[ResourceTypes.GRAIN] >= 1 and
+                self.resources[ResourceTypes.WOOL] >= 1 and
+                self.resources[ResourceTypes.ORE] >= 1 and
+                len(gameState.dev_card_deck) > 0)
+
+    def canPlayKnight(self):
+        return any(card.type == DevCardTypes.KNIGHT and card.can_be_used and not card.has_been_used for card in self.dev_cards)
+
+    def updateLargestArmy(self, gameState):
+        if self.played_knights >= LARGEST_ARMY_REQUIREMENT:
+            if not self.has_largest_army:
+                current_largest = max(player.played_knights for player in gameState.playerAgents if player != self)
+                if self.played_knights > current_largest:
+                    for player in gameState.playerAgents:
+                        if player.has_largest_army:
+                            player.has_largest_army = False
+                            player.victoryPoints -= LARGEST_ARMY_POINTS
+                    self.has_largest_army = True
+                    self.victoryPoints += LARGEST_ARMY_POINTS
+
+    def endTurn(self):
+        for card in self.dev_cards:
+            card.make_usable()
 
 class PlayerAgentExpectiminimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=3, evalFn=defaultEvalFn):
