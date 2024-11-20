@@ -50,6 +50,14 @@ class AGENT(Enum):
     PLAYER_AGENT = 1
     DICE_AGENT = 2
 
+BANK_RESOURCES = {
+    ResourceTypes.BRICK: 19,
+    ResourceTypes.WOOL: 19,
+    ResourceTypes.ORE: 19,
+    ResourceTypes.GRAIN: 19,
+    ResourceTypes.LUMBER: 19
+}
+
 # Resource costs of a Road, a Settlement, and a City
 ROAD_COST = Counter({ResourceTypes.BRICK: 1, ResourceTypes.LUMBER: 1})
 SETTLEMENT_COST = Counter({ResourceTypes.LUMBER: 1, ResourceTypes.BRICK: 1, ResourceTypes.WOOL: 1, ResourceTypes.GRAIN: 1})

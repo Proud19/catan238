@@ -11,6 +11,7 @@ class GameState:
         self.board = Board(layout)
         self.playerAgents = [None] * NUM_PLAYERS
         self.diceAgent = DiceAgent()
+        self.bank = Counter(BANK_RESOURCES)
 
     def deepCopy(self):
         copy = GameState()
@@ -44,8 +45,8 @@ class GameState:
             for settlement in agent.settlements:
                 legalActions.append((ACTIONS.CITY, settlement))
 
-        if agent.canTrade():
-            for trade in agent.getPossibleTrades():
+        if agent.canTrade(self):
+            for trade in agent.getPossibleTrades(self):
                 legalActions.append((ACTIONS.TRADE, trade))
 
         legalActions.append((ACTIONS.PASS, None))
@@ -57,7 +58,7 @@ class GameState:
             raise Exception("Can't generate a successor of a terminal state!")
 
         copy = self.deepCopy()
-        copy.playerAgents[playerIndex].applyAction(action, copy.board)
+        copy.playerAgents[playerIndex].applyAction(action, copy.board, copy)
         copy.board.applyAction(playerIndex, action)
         return copy
 
@@ -75,10 +76,30 @@ class GameState:
         return -1
 
     def updatePlayerResourcesForDiceRoll(self, diceRoll):
-        for agent in self.playerAgents:
-            gainedResources = agent.updateResources(diceRoll, self.board)
-            if VERBOSE and DEBUG:
-                print(f"{agent.name} received: {gainedResources}")
+        hexagons = self.board.dieRollDict.get(diceRoll, [])
+        player_resources = {i: Counter() for i in range(NUM_PLAYERS)}
+
+        for hexagon in hexagons:
+            if hexagon.resource != ResourceTypes.NOTHING:
+                for vertex in self.board.getVertices(hexagon):
+                    if vertex.player is not None:
+                        player_resources[vertex.player][hexagon.resource] += 1
+                        if vertex.isCity:
+                            player_resources[vertex.player][hexagon.resource] += 1
+
+        for player_index, resources in player_resources.items():
+            can_fulfill = all(self.bank[resource] >= amount for resource, amount in resources.items())
+            if can_fulfill:
+                for resource, amount in resources.items():
+                    self.bank[resource] -= amount
+                    self.playerAgents[player_index].resources[resource] += amount
+            else:
+                # If bank can't fulfill the entire request, no one gets any resources
+                pass
+
+        if VERBOSE and DEBUG:
+            for agent in self.playerAgents:
+                print(f"{agent.name} received: {player_resources[agent.agentIndex] if can_fulfill else 'Nothing'}")
                 print(f"{agent.name} now has: {agent.resources}")
 
     def applyAction(self, playerIndex, action):
@@ -86,6 +107,9 @@ class GameState:
         self.board.applyAction(playerIndex, action)
         if action[0] == ACTIONS.ROAD:
             self.playerAgents[playerIndex].updateLongestRoad(self.board, self)
+
+    def format_bank_resources(self):
+        return ', '.join([f"{ResourceDict[resource]}: {count}" for resource, count in self.bank.items()])
 
 class Game:
     def __init__(self, playerAgentNums=None):
@@ -205,7 +229,19 @@ class Game:
             agent.roads.extend([roadOne, roadTwo])
 
         for agent in self.gameState.playerAgents:
-            agent.collectInitialResources(self.gameState.board)
+            initial_resources = agent.collectInitialResources(self.gameState.board)
+            if initial_resources:  # Check if initial_resources is not empty
+                can_fulfill = all(self.gameState.bank[resource] >= amount for resource, amount in initial_resources.items())
+                if can_fulfill:
+                    for resource, amount in initial_resources.items():
+                        self.gameState.bank[resource] -= amount
+                        agent.resources[resource] += amount
+                else:
+                    if VERBOSE:
+                        print(f"Bank couldn't fulfill initial resources for {agent.name}")
+            else:
+                if VERBOSE:
+                    print(f"No initial resources collected for {agent.name}")
 
     def initializeSettlementsAndResourcesForSettlements(self):
         if VERBOSE and DEBUG:
@@ -271,7 +307,7 @@ class Game:
 
         # First, handle discarding
         for player in self.gameState.playerAgents:
-            discarded = player.discard_half_on_seven()
+            discarded = player.discard_half_on_seven(self.gameState)
             if discarded:
                 if VERBOSE:
                     print(f"{player.name} discarded {sum(discarded.values())} resources: {discarded}")
@@ -293,8 +329,13 @@ class Game:
         if victims:
             victim = random.choice(victims)
             stolen_resource = current_player.steal_resource(victim)
-            if VERBOSE and stolen_resource:
-                print(f"{current_player.name} stole a {stolen_resource} from {victim.name}")
+            if VERBOSE:
+                if stolen_resource:
+                    print(f"{current_player.name} stole a {stolen_resource} from {victim.name}")
+                else:
+                    print(f"{current_player.name} attempted to steal from {victim.name}, but they had no resources")
+        elif VERBOSE:
+            print(f"No players to steal from at the new robber location")
 
     def run(self):
         if VERBOSE:
@@ -370,7 +411,9 @@ class Game:
         if VERBOSE:
             print(f"---------- TURN {self.turnNumber} --------------")
             print(f"It's {currentAgent.name}'s turn!")
-            print("PLAYER INFO:")
+            print("BANK INFO:")
+            print(self.gameState.format_bank_resources())
+            print("\nPLAYER INFO:")
             for a in self.gameState.playerAgents:
                 print(a)
 
@@ -383,28 +426,35 @@ class Game:
         else:
             self.gameState.updatePlayerResourcesForDiceRoll(diceRoll)
 
-        actions_taken = []
-        while True:
-            value, action = currentAgent.getAction(self.gameState)
-            if action[0] == ACTIONS.PASS:
-                if VERBOSE:
-                    print(f"{currentAgent.name} chose to pass.")
-                break
-
-            self.gameState.applyAction( self.currentAgentIndex, action)
-            actions_taken.append(action)
+        value, action = currentAgent.getAction(self.gameState)
+        if action is not None:
+            self.gameState.applyAction(self.currentAgentIndex, action)
 
             if VERBOSE:
                 print(f"{currentAgent.name} took action {action[0]} at {action[1]}")
 
+            if action[0] == ACTIONS.ROAD and currentAgent.numRoads >= MAX_ROADS:
+                if VERBOSE:
+                    print(f"{currentAgent.name} has reached the maximum number of roads ({MAX_ROADS}).")
+            elif action[0] == ACTIONS.SETTLE and currentAgent.numSettlements >= MAX_SETTLEMENTS:
+                if VERBOSE:
+                    print(f"{currentAgent.name} has reached the maximum number of settlements ({MAX_SETTLEMENTS}).")
+            elif action[0] == ACTIONS.CITY and currentAgent.numCities >= MAX_CITIES:
+                if VERBOSE:
+                    print(f"{currentAgent.name} has reached the maximum number of cities ({MAX_CITIES}).")
             if GRAPHICS:
                 self.drawGame()
+        else:
+            if VERBOSE:
+                print(f"{currentAgent.name} chose to pass.")
 
-        self.moveHistory.append((currentAgent.name, actions_taken))
+        self.moveHistory.append((currentAgent.name, action))
         self.currentAgentIndex = (self.currentAgentIndex + 1) % self.gameState.getNumPlayerAgents()
         self.turnNumber += 1
 
         if VERBOSE:
+            print("\nUpdated BANK INFO:")
+            print(self.gameState.format_bank_resources())
             print("\nUpdated PLAYER INFO:")
             for a in self.gameState.playerAgents:
                 print(a)
