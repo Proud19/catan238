@@ -130,7 +130,7 @@ class PlayerAgent(object):
         newCopy.longestRoadLength = self.longestRoadLength
         return newCopy
 
-    def applyAction(self, action, board, gameState=None):
+    def applyAction(self, action, board, gameState):
         if action is None:
             return
 
@@ -142,6 +142,7 @@ class PlayerAgent(object):
             vertex = board.getVertex(actionVertex.X, actionVertex.Y)
             self.settlements.append(vertex)
             self.resources.subtract(SETTLEMENT_COST)
+            gameState.bank.update(SETTLEMENT_COST)  # Add resources back to the bank
             self.victoryPoints += SETTLEMENT_VICTORY_POINTS
             self.numSettlements += 1
 
@@ -153,9 +154,8 @@ class PlayerAgent(object):
             road = board.getEdge(actionEdge.X, actionEdge.Y)
             self.roads.append(road)
             self.resources.subtract(ROAD_COST)
+            gameState.bank.update(ROAD_COST)  # Add resources back to the bank
             self.numRoads += 1
-            if gameState:
-                self.updateLongestRoad(board, gameState)
 
         if action[0] is ACTIONS.CITY:
             if not self.canBuildCity():
@@ -170,6 +170,7 @@ class PlayerAgent(object):
                     break
 
             self.resources.subtract(CITY_COST)
+            gameState.bank.update(CITY_COST)  # Add resources back to the bank
             self.victoryPoints += 1
             self.numCities += 1
             self.numSettlements -= 1
@@ -177,11 +178,13 @@ class PlayerAgent(object):
         if action[0] is ACTIONS.TRADE:
             give_resource, get_resource = action[1]
             if give_resource != ResourceTypes.NOTHING and get_resource != ResourceTypes.NOTHING:
-                if self.resources[give_resource] >= 4:
+                if self.resources[give_resource] >= 4 and gameState.bank[get_resource] > 0:
                     self.resources[give_resource] -= 4
                     self.resources[get_resource] += 1
+                    gameState.bank[give_resource] += 4
+                    gameState.bank[get_resource] -= 1
                 else:
-                    raise Exception(f"Player {self.agentIndex} doesn't have enough resources to make this trade!")
+                    raise Exception(f"Player {self.agentIndex} doesn't have enough resources to make this trade or bank is out of the requested resource!")
             else:
                 raise Exception(f"Cannot trade with NOTHING resource type!")
 
@@ -194,14 +197,18 @@ class PlayerAgent(object):
         if VERBOSE and DEBUG:
             print(f"Collecting initial resources for player {self.agentIndex}")
 
+        initial_resources = Counter()
+
         for settlement in self.settlements:
             surroundingHexes = board.getHexes(settlement)
             for hex in surroundingHexes:
                 if hex.resource != ResourceTypes.NOTHING:
-                    self.resources[hex.resource] += 1
+                    initial_resources[hex.resource] += 1
 
         if VERBOSE and DEBUG:
-            print(f"Player {self.agentIndex} resources after collection: {self.resources}")
+            print(f"Player {self.agentIndex} initial resources: {initial_resources}")
+
+        return initial_resources
 
     def hasWon(self):
         return self.victoryPoints >= VICTORY_POINTS_TO_WIN
@@ -226,20 +233,29 @@ class PlayerAgent(object):
 
         self.longestRoadLength = longestRoadLength
 
-    def discard_half_on_seven(self):
+    def discard_half_on_seven(self, gameState):
         total_resources = sum(self.resources.values())
         if total_resources <= 7:
-            return
+            return None
 
         discard_count = total_resources // 2
         discarded = Counter()
 
-        while sum(discarded.values()) < discard_count:
-            resource = random.choice(list(self.resources.keys()))
-            if self.resources[resource] > discarded[resource]:
+        resources_list = list(self.resources.elements())
+        
+        if not resources_list:  # If the player has no resources
+            return None
+
+        for _ in range(discard_count):
+            if resources_list:  # Check if there are still resources to discard
+                resource = random.choice(resources_list)
                 discarded[resource] += 1
+                resources_list.remove(resource)
+            else:
+                break
 
         self.resources -= discarded
+        gameState.bank += discarded  # Add discarded resources back to the bank
         return discarded
 
     def choose_robber_placement(self, board):
@@ -247,25 +263,34 @@ class PlayerAgent(object):
         return random.choice(valid_hexes)
 
     def steal_resource(self, victim):
-        if len(victim.resources) == 0:
+        if not victim.resources or sum(victim.resources.values()) == 0:
             return None
         resource = random.choice(list(victim.resources.elements()))
         victim.resources[resource] -= 1
         self.resources[resource] += 1
         return resource
 
-    def canTrade(self):
-        return any(count >= 4 for count in self.resources.values())
+    def canTrade(self, gameState):
+        for give_resource, count in self.resources.items():
+            if give_resource == ResourceTypes.NOTHING:
+                continue
+            if count >= 4:
+                for get_resource in ResourceTypes:
+                    if get_resource == ResourceTypes.NOTHING or get_resource == give_resource:
+                        continue
+                    if gameState.bank[get_resource] > 0:
+                        return True
+        return False
 
-    def getPossibleTrades(self):
+    def getPossibleTrades(self, gameState):
         trades = []
-        for give_resource in ResourceTypes:
-            if give_resource != ResourceTypes.NOTHING and self.resources[give_resource] >= 4:
+        for give_resource, count in self.resources.items():
+            if give_resource != ResourceTypes.NOTHING and count >= 4:
                 for get_resource in ResourceTypes:
                     if get_resource != ResourceTypes.NOTHING and get_resource != give_resource:
-                        trades.append((give_resource, get_resource))
+                        if gameState.bank[get_resource] > 0:
+                            trades.append((give_resource, get_resource))
         return trades
-
     def canPass(self):
         return True  # Passing is always an option
 
@@ -350,9 +375,18 @@ class PlayerAgentExpectiminimax(PlayerAgent):
         filtered_actions = actions + [(ACTIONS.PASS, None)]
         return filtered_actions
     
+    def discard_half_on_seven(self, gameState):
+        total_resources = sum(self.resources.values())
+        if total_resources <= 7:
+            return None
+
+        discard_count = total_resources // 2
+        discarded = self.choose_cards_to_discard(discard_count)
+        self.resources -= discarded
+        gameState.bank += discarded  # Add discarded resources back to the bank
+        return discarded
+
     def choose_cards_to_discard(self, discard_count):
-        # Implement a smarter discarding strategy here
-        # For now, we'll use a simple strategy of discarding the most abundant resources
         discarded = Counter()
         resources_list = sorted(self.resources.items(), key=lambda x: x[1], reverse=True)
         
@@ -364,16 +398,6 @@ class PlayerAgentExpectiminimax(PlayerAgent):
             if sum(discarded.values()) == discard_count:
                 break
         
-        return discarded
-
-    def discard_half_on_seven(self):
-        total_resources = sum(self.resources.values())
-        if total_resources <= 7:
-            return None
-
-        discard_count = total_resources // 2
-        discarded = self.choose_cards_to_discard(discard_count)
-        self.resources -= discarded
         return discarded
 
 class PlayerAgentAlphaBeta(PlayerAgent):
@@ -462,12 +486,14 @@ class PlayerAgentAlphaBeta(PlayerAgent):
     def filterActions(self, actions):
         filtered_actions = actions + [(ACTIONS.PASS, None)]
         return filtered_actions
+    
+    def discard_half_on_seven(self, gameState):
+        return super().discard_half_on_seven(gameState)
 
 class PlayerAgentRandom(PlayerAgent):
-    def getAction(self, state):
-        possibleActions = state.getLegalActions(self.agentIndex)
+    def getAction(self, gameState):
+        possibleActions = gameState.getLegalActions(self.agentIndex)
         if possibleActions:
-            possibleActions.append((ACTIONS.PASS, None))  # Add PASS as a possible action
             chosenAction = random.choice(possibleActions)
             return (0, chosenAction)
         return (0, (ACTIONS.PASS, None))
@@ -488,6 +514,9 @@ class PlayerAgentRandom(PlayerAgent):
     def choose_robber_placement(self, board):
         valid_hexes = board.get_valid_robber_hexes()
         return random.choice(valid_hexes)
+    
+    def discard_half_on_seven(self, gameState):
+        return super().discard_half_on_seven(gameState)
 
 class PlayerAgentExpectimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn=defaultEvalFn):
@@ -540,6 +569,7 @@ class PlayerAgentExpectimax(PlayerAgent):
                 return bestValue, bestAction
             else:
                 totalValue = 0
+                count = 0
                 for currAction in possibleActions:
                     if currAction[0] == ACTIONS.PASS:
                         currVal = self.evaluationFunction(currState, self.agentIndex)
@@ -553,9 +583,10 @@ class PlayerAgentExpectimax(PlayerAgent):
                                 return None, None
                             currVal += probability * value
                     totalValue += currVal
+                    count += 1
                     if currAction[0] == ACTIONS.PASS:
                         break  # If PASS is an option, no need to check further
-                return totalValue / len(possibleActions), None
+                return totalValue / count if count > 0 else 0, None
 
         value, action = recurse(state, 0, self.agentIndex)
         if value is None or action is None:
@@ -566,3 +597,6 @@ class PlayerAgentExpectimax(PlayerAgent):
     def filterActions(self, actions):
         filtered_actions = actions + [(ACTIONS.PASS, None)]
         return filtered_actions
+    
+    def discard_half_on_seven(self, gameState):
+        return super().discard_half_on_seven(gameState)
