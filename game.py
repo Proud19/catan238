@@ -12,6 +12,8 @@ class GameState:
         self.playerAgents = [None] * NUM_PLAYERS
         self.diceAgent = DiceAgent()
         self.bank = Counter(BANK_RESOURCES)
+        self.dev_card_deck = DEV_CARD_DECK.copy()
+        random.shuffle(self.dev_card_deck)
 
     def deepCopy(self):
         copy = GameState()
@@ -48,6 +50,13 @@ class GameState:
         if agent.canTrade(self):
             for trade in agent.getPossibleTrades(self):
                 legalActions.append((ACTIONS.TRADE, trade))
+
+        if agent.canBuyDevCard(self):
+            legalActions.append((ACTIONS.BUY_DEV_CARD, None))
+
+        if agent.canPlayKnight():
+            for hex in self.board.get_valid_robber_hexes():
+                legalActions.append((ACTIONS.PLAY_KNIGHT, hex))
 
         legalActions.append((ACTIONS.PASS, None))
 
@@ -110,6 +119,30 @@ class GameState:
 
     def format_bank_resources(self):
         return ', '.join([f"{ResourceDict[resource]}: {count}" for resource, count in self.bank.items()])
+
+    def drawDevCard(self):
+        if len(self.dev_card_deck) > 0:
+            return self.dev_card_deck.pop()
+        return None
+    
+    def move_robber_and_steal(self, moving_player, new_hex):
+        if VERBOSE:
+            print(f"{moving_player.name} moved the robber to hex {new_hex}")
+        
+        self.board.move_robber(new_hex)
+        victims = [p for p in self.playerAgents 
+                   if p != moving_player and any(v in self.board.getVertices(new_hex) 
+                                                 for v in p.settlements + p.cities)]
+        if victims:
+            victim = random.choice(victims)
+            stolen_resource = moving_player.steal_resource(victim)
+            if VERBOSE:
+                if stolen_resource:
+                    print(f"{moving_player.name} stole a {stolen_resource.name} from {victim.name}")
+                else:
+                    print(f"{moving_player.name} attempted to steal from {victim.name}, but they had no resources")
+        elif VERBOSE:
+            print(f"No players to steal from at the new robber location")
 
 class Game:
     def __init__(self, playerAgentNums=None):
@@ -312,30 +345,12 @@ class Game:
                 if VERBOSE:
                     print(f"{player.name} discarded {sum(discarded.values())} resources: {discarded}")
 
-        # Now, move the robber
+        # Now, move the robber and steal
         new_hex = current_player.choose_robber_placement(self.gameState.board)
-        self.gameState.board.move_robber(new_hex)
-
-        if VERBOSE:
-            print(f"{current_player.name} moved the robber to hex {new_hex}")
+        self.gameState.move_robber_and_steal(current_player, new_hex)
 
         if GRAPHICS:
             self.drawGame()
-
-        # Steal a resource
-        victims = [p for p in self.gameState.playerAgents 
-                if p != current_player and any(v in self.gameState.board.getVertices(new_hex) 
-                                                for v in p.settlements + p.cities)]
-        if victims:
-            victim = random.choice(victims)
-            stolen_resource = current_player.steal_resource(victim)
-            if VERBOSE:
-                if stolen_resource:
-                    print(f"{current_player.name} stole a {stolen_resource} from {victim.name}")
-                else:
-                    print(f"{current_player.name} attempted to steal from {victim.name}, but they had no resources")
-        elif VERBOSE:
-            print(f"No players to steal from at the new robber location")
 
     def run(self):
         if VERBOSE:
@@ -426,9 +441,25 @@ class Game:
         else:
             self.gameState.updatePlayerResourcesForDiceRoll(diceRoll)
 
-        value, action = currentAgent.getAction(self.gameState)
-        if action is not None:
+        actions_taken = []
+        dev_card_played = False
+        while True:
+            value, action = currentAgent.getAction(self.gameState)
+            if action[0] == ACTIONS.PASS:
+                if VERBOSE:
+                    print(f"{currentAgent.name} chose to pass.")
+                break
+
+            if action[0] == ACTIONS.PLAY_KNIGHT:
+                if dev_card_played:
+                    if VERBOSE:
+                        print(f"{currentAgent.name} can't play more than one dev card per turn.")
+                    continue
+                dev_card_played = True
+                currentAgent.can_play_dev_card = False
+
             self.gameState.applyAction(self.currentAgentIndex, action)
+            actions_taken.append(action)
 
             if VERBOSE:
                 print(f"{currentAgent.name} took action {action[0]} at {action[1]}")
@@ -442,13 +473,12 @@ class Game:
             elif action[0] == ACTIONS.CITY and currentAgent.numCities >= MAX_CITIES:
                 if VERBOSE:
                     print(f"{currentAgent.name} has reached the maximum number of cities ({MAX_CITIES}).")
+            
             if GRAPHICS:
                 self.drawGame()
-        else:
-            if VERBOSE:
-                print(f"{currentAgent.name} chose to pass.")
 
-        self.moveHistory.append((currentAgent.name, action))
+        currentAgent.endTurn()
+        self.moveHistory.append((currentAgent.name, actions_taken))
         self.currentAgentIndex = (self.currentAgentIndex + 1) % self.gameState.getNumPlayerAgents()
         self.turnNumber += 1
 
