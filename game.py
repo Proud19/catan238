@@ -14,6 +14,7 @@ class GameState:
         self.bank = Counter(BANK_RESOURCES)
         self.dev_card_deck = DEV_CARD_DECK.copy()
         random.shuffle(self.dev_card_deck)
+        self.largest_army_holder = None
 
     def deepCopy(self):
         copy = GameState()
@@ -54,9 +55,13 @@ class GameState:
         if agent.canBuyDevCard(self):
             legalActions.append((ACTIONS.BUY_DEV_CARD, None))
 
-        if agent.canPlayKnight():
-            for hex in self.board.get_valid_robber_hexes():
-                legalActions.append((ACTIONS.PLAY_KNIGHT, hex))
+        for card in agent.dev_cards:
+            if card.can_be_used and not card.has_been_used:
+                if card.type == DevCardTypes.KNIGHT:
+                    for hex in self.board.get_valid_robber_hexes():
+                        legalActions.append((ACTIONS.PLAY_DEV_CARD, (DevCardTypes.KNIGHT, hex)))
+                elif card.type in [DevCardTypes.ROAD_BUILDING, DevCardTypes.YEAR_OF_PLENTY, DevCardTypes.MONOPOLY]:
+                    legalActions.append((ACTIONS.PLAY_DEV_CARD, card.type))
 
         legalActions.append((ACTIONS.PASS, None))
 
@@ -112,10 +117,11 @@ class GameState:
                 print(f"{agent.name} now has: {agent.resources}")
 
     def applyAction(self, playerIndex, action):
-        self.playerAgents[playerIndex].applyAction(action, self.board, self)
+        result = self.playerAgents[playerIndex].applyAction(action, self.board, self)
         self.board.applyAction(playerIndex, action)
         if action[0] == ACTIONS.ROAD:
             self.playerAgents[playerIndex].updateLongestRoad(self.board, self)
+        return result
 
     def format_bank_resources(self):
         return ', '.join([f"{ResourceDict[resource]}: {count}" for resource, count in self.bank.items()])
@@ -131,8 +137,8 @@ class GameState:
         
         self.board.move_robber(new_hex)
         victims = [p for p in self.playerAgents 
-                   if p != moving_player and any(v in self.board.getVertices(new_hex) 
-                                                 for v in p.settlements + p.cities)]
+                if p != moving_player and any(v in self.board.getVertices(new_hex) 
+                                                for v in p.settlements + p.cities)]
         if victims:
             victim = random.choice(victims)
             stolen_resource = moving_player.steal_resource(victim)
@@ -143,6 +149,30 @@ class GameState:
                     print(f"{moving_player.name} attempted to steal from {victim.name}, but they had no resources")
         elif VERBOSE:
             print(f"No players to steal from at the new robber location")
+    
+    def checkLargestArmy(self):
+        players_with_3_plus_knights = [player for player in self.playerAgents if player.played_knights >= LARGEST_ARMY_REQUIREMENT]
+        
+        if not players_with_3_plus_knights:
+            if self.largest_army_holder:
+                self.largest_army_holder.has_largest_army = False
+                self.largest_army_holder.victoryPoints -= LARGEST_ARMY_POINTS
+                self.largest_army_holder = None
+            return
+
+        new_largest_army_player = max(players_with_3_plus_knights, key=lambda p: p.played_knights)
+
+        if self.largest_army_holder != new_largest_army_player:
+            if self.largest_army_holder:
+                self.largest_army_holder.has_largest_army = False
+                self.largest_army_holder.victoryPoints -= LARGEST_ARMY_POINTS
+            
+            new_largest_army_player.has_largest_army = True
+            new_largest_army_player.victoryPoints += LARGEST_ARMY_POINTS
+            self.largest_army_holder = new_largest_army_player
+
+        if VERBOSE:
+            print(f"{self.largest_army_holder.name} now holds the Largest Army with {self.largest_army_holder.played_knights} knights played.")
 
 class Game:
     def __init__(self, playerAgentNums=None):
@@ -442,7 +472,7 @@ class Game:
             self.gameState.updatePlayerResourcesForDiceRoll(diceRoll)
 
         actions_taken = []
-        dev_card_played = False
+        currentAgent.dev_card_played_this_turn = False  # Reset at the start of the turn
         while True:
             value, action = currentAgent.getAction(self.gameState)
             if action[0] == ACTIONS.PASS:
@@ -450,33 +480,27 @@ class Game:
                     print(f"{currentAgent.name} chose to pass.")
                 break
 
-            if action[0] == ACTIONS.PLAY_KNIGHT:
-                if dev_card_played:
+            if action[0] == ACTIONS.PLAY_DEV_CARD:
+                card_type, card_action = action[1]
+                if currentAgent.dev_card_played_this_turn and card_type != DevCardTypes.VICTORY_POINT:
                     if VERBOSE:
                         print(f"{currentAgent.name} can't play more than one dev card per turn.")
                     continue
-                dev_card_played = True
-                currentAgent.can_play_dev_card = False
 
-            self.gameState.applyAction(self.currentAgentIndex, action)
+                # Apply the action
+                self.gameState.applyAction(self.currentAgentIndex, action)
+            else:
+                self.gameState.applyAction(self.currentAgentIndex, action)
+
             actions_taken.append(action)
 
             if VERBOSE:
                 print(f"{currentAgent.name} took action {action[0]} at {action[1]}")
 
-            if action[0] == ACTIONS.ROAD and currentAgent.numRoads >= MAX_ROADS:
-                if VERBOSE:
-                    print(f"{currentAgent.name} has reached the maximum number of roads ({MAX_ROADS}).")
-            elif action[0] == ACTIONS.SETTLE and currentAgent.numSettlements >= MAX_SETTLEMENTS:
-                if VERBOSE:
-                    print(f"{currentAgent.name} has reached the maximum number of settlements ({MAX_SETTLEMENTS}).")
-            elif action[0] == ACTIONS.CITY and currentAgent.numCities >= MAX_CITIES:
-                if VERBOSE:
-                    print(f"{currentAgent.name} has reached the maximum number of cities ({MAX_CITIES}).")
-            
             if GRAPHICS:
                 self.drawGame()
-
+        
+        self.gameState.checkLargestArmy()
         currentAgent.endTurn()
         self.moveHistory.append((currentAgent.name, actions_taken))
         self.currentAgentIndex = (self.currentAgentIndex + 1) % self.gameState.getNumPlayerAgents()

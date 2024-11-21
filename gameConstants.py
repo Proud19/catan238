@@ -29,6 +29,9 @@ MAX_CITIES = 4
 LONGEST_ROAD_LENGTH = 5
 LONGEST_ROAD_POINTS = 2
 
+LARGEST_ARMY_REQUIREMENT = 3
+LARGEST_ARMY_POINTS = 2
+
 DEFAULT_PLAYER_ARRAY = [4,0]
 
 class ACTIONS(Enum):
@@ -39,6 +42,7 @@ class ACTIONS(Enum):
     PASS = 5
     BUY_DEV_CARD = 6
     PLAY_KNIGHT = 7
+    PLAY_DEV_CARD = 8
 
 class ResourceTypes(Enum):
     BRICK = 1
@@ -69,11 +73,13 @@ DEV_CARD_COST = Counter({ResourceTypes.GRAIN: 1, ResourceTypes.WOOL: 1, Resource
 class DevCardTypes(Enum):
     KNIGHT = 1
     VICTORY_POINT = 2
+    ROAD_BUILDING = 3
+    YEAR_OF_PLENTY = 4
+    MONOPOLY = 5
 
-DEV_CARD_DECK = [DevCardTypes.KNIGHT] * 14 + [DevCardTypes.VICTORY_POINT] * 5
-
-LARGEST_ARMY_POINTS = 2
-LARGEST_ARMY_REQUIREMENT = 3
+DEV_CARD_DECK = [DevCardTypes.KNIGHT] * 14 + [DevCardTypes.VICTORY_POINT] * 5 + \
+                [DevCardTypes.ROAD_BUILDING] * 2 + [DevCardTypes.YEAR_OF_PLENTY] * 2 + \
+                [DevCardTypes.MONOPOLY] * 2
 
 # A dictionary from resource type (enum, above) to string representation
 # so we can print out the resource type easily
