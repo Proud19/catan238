@@ -520,3 +520,29 @@ class Board:
         if new_hex not in self.get_valid_robber_hexes():
             raise ValueError("Invalid hex for robber placement")
         self.robber.move(new_hex)
+
+    def canBuildRoadAt(self, playerIndex, row, col):
+        edge = self.edges[row][col]
+        if edge is None or edge.isOccupied():
+            return False
+
+        # Check if the road is connected to an existing road or settlement/city of the player
+        connected = False
+        vertex_ends = self.getVertexEnds(edge)
+        
+        for vertex in vertex_ends:
+            # Check if the player has a settlement or city at this vertex
+            if vertex.player == playerIndex:
+                connected = True
+                break
+            
+            # Check if the player has a connected road
+            for neighbor_edge in self.getEdgesOfVertex(vertex):
+                if neighbor_edge.player == playerIndex:
+                    connected = True
+                    break
+            
+            if connected:
+                break
+
+        return connected

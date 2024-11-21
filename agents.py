@@ -58,6 +58,8 @@ class DevCard:
         self.type = card_type
         self.can_be_used = False
         self.has_been_used = False
+        if card_type == DevCardTypes.VICTORY_POINT:
+            self.has_been_used = True  # Victory points are always "used"
 
     def make_usable(self):
         self.can_be_used = True
@@ -69,8 +71,8 @@ class DevCard:
         return False
     
     def __repr__(self):
-        status = "Usable" if self.can_be_used and not self.has_been_used else "Used" if self.has_been_used else "Not Usable"
-        return f"{self.type.name} ({status})"
+        status = "Used" if self.has_been_used else "Usable" if self.can_be_used else "Not Usable"
+        return f"{self.type.name}: {status}"
 
 class PlayerAgent(object):
     def __init__(self, name, agentIndex, color, depth=3, evalFn=defaultEvalFn):
@@ -116,8 +118,7 @@ class PlayerAgent(object):
         # Add Development Cards information
         s += "Development Cards:\n"
         for card in self.dev_cards:
-            status = "Usable" if card.can_be_used and not card.has_been_used else "Used" if card.has_been_used else "Not Usable"
-            s += f"  - {card.type.name}: {status}\n"
+            s += f"  - {card}\n"
         
         # Add Largest Army and Longest Road information
         if self.has_largest_army:
@@ -239,16 +240,57 @@ class PlayerAgent(object):
             else:
                 print(f"No development cards left in the deck.")
 
-        elif action[0] is ACTIONS.PLAY_KNIGHT:
-            knight_card = next((card for card in self.dev_cards if card.type == DevCardTypes.KNIGHT and card.can_be_used), None)
-            if knight_card is None or not knight_card.use():
-                raise Exception(f"Player {self.agentIndex} can't play a Knight card!")
-            self.dev_cards.remove(knight_card)
-            self.played_knights += 1
-            new_hex = action[1]
-            gameState.move_robber_and_steal(self, new_hex)
-            self.updateLargestArmy(gameState)
+        elif action[0] is ACTIONS.PLAY_DEV_CARD:
+            card_type, card_action = action[1]
+            card = next((card for card in self.dev_cards if card.type == card_type and card.can_be_used and not card.has_been_used), None)
+            if card is None:
+                raise Exception(f"Player {self.agentIndex} can't play this development card!")
+            
+            card.use()
 
+            if card_type == DevCardTypes.KNIGHT:
+                self.played_knights += 1
+                gameState.move_robber_and_steal(self, card_action)
+            elif card_type == DevCardTypes.ROAD_BUILDING:
+                if self.numRoads >= MAX_ROADS:
+                    return (card_type, [])  # Return empty list if already at max roads
+                roads_built = []
+                for road_coords in card_action:
+                    if self.numRoads < MAX_ROADS:  # Change to < instead of <=
+                        if self.buildRoad(road_coords, board, gameState):
+                            roads_built.append(road_coords)
+                            edge = board.getEdge(road_coords[0], road_coords[1])
+                            board.allRoads.append(edge)
+                            self.numRoads += 1
+                    else:
+                        break
+                return (card_type, roads_built)
+            elif card_type == DevCardTypes.YEAR_OF_PLENTY:
+                for resource in card_action:
+                    if gameState.bank[resource] > 0:
+                        self.resources[resource] += 1
+                        gameState.bank[resource] -= 1
+            elif card_type == DevCardTypes.MONOPOLY:
+                resource = card_action
+                total_stolen = 0
+                for player in gameState.playerAgents:
+                    if player != self:
+                        amount = player.resources[resource]
+                        player.resources[resource] = 0
+                        self.resources[resource] += amount
+                        total_stolen += amount
+                if VERBOSE:
+                    if total_stolen > 0:
+                        print(f"{self.name} used Monopoly and collected {total_stolen} {resource.name}")
+                    else:
+                        print(f"{self.name} used Monopoly on {resource.name}, but no resources were collected")
+            elif card_type == DevCardTypes.VICTORY_POINT:
+                self.victoryPoints += 1
+
+            # Mark that a dev card has been played this turn
+            self.dev_card_played_this_turn = True
+
+            return action[1]  # Return the card_action for dev cards
 
     def updateResources(self, diceRoll, board):
         newResources = Counter(board.getResourcesFromDieRollForPlayer(self.agentIndex, diceRoll))
@@ -327,7 +369,10 @@ class PlayerAgent(object):
     def steal_resource(self, victim):
         if not victim.resources or sum(victim.resources.values()) == 0:
             return None
-        resource = random.choice([r for r in victim.resources.elements()])
+        resources_list = [r for r in victim.resources.elements()]
+        if not resources_list:
+            return None
+        resource = random.choice(resources_list)
         victim.resources[resource] -= 1
         self.resources[resource] += 1
         return resource
@@ -364,11 +409,14 @@ class PlayerAgent(object):
 
     def canPlayKnight(self):
         return any(card.type == DevCardTypes.KNIGHT and card.can_be_used and not card.has_been_used for card in self.dev_cards)
+    
+    def canPlayDevCard(self, card_type):
+        return any(card.type == card_type and card.can_be_used and not card.has_been_used for card in self.dev_cards)
 
     def updateLargestArmy(self, gameState):
         if self.played_knights >= LARGEST_ARMY_REQUIREMENT:
             if not self.has_largest_army:
-                current_largest = max(player.played_knights for player in gameState.playerAgents if player != self)
+                current_largest = max((player.played_knights for player in gameState.playerAgents if player != self), default=0)
                 if self.played_knights > current_largest:
                     for player in gameState.playerAgents:
                         if player.has_largest_army:
@@ -379,8 +427,32 @@ class PlayerAgent(object):
 
     def endTurn(self):
         for card in self.dev_cards:
-            card.make_usable()
+            if not card.has_been_used:
+                card.make_usable()
 
+    def get_legal_road_spots(self, board):
+        legal_spots = []
+        for road in self.roads:
+            vertices = board.getVertexEnds(road)
+            for vertex in vertices:
+                edges = board.getEdgesOfVertex(vertex)
+                for edge in edges:
+                    if not edge.isOccupied() and board.canBuildRoadAt(self.agentIndex, edge.X, edge.Y):
+                        legal_spots.append((edge.X, edge.Y))
+        return legal_spots
+
+    def buildRoad(self, road_coords, board, gameState):
+        if self.numRoads < MAX_ROADS:  # Change to < instead of <=
+            edge = board.getEdge(road_coords[0], road_coords[1])
+            if edge and not edge.isOccupied():
+                if board.canBuildRoadAt(self.agentIndex, road_coords[0], road_coords[1]):
+                    edge.build(self.agentIndex)
+                    self.roads.append(edge)
+                    board.allRoads.append(edge)
+                    # Remove the increment from here, as it's now done in applyAction
+                    return True
+        return False
+    
 class PlayerAgentExpectiminimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=3, evalFn=defaultEvalFn):
         super(PlayerAgentExpectiminimax, self).__init__(name, agentIndex, color, depth=depth, evalFn=evalFn)
@@ -582,7 +654,22 @@ class PlayerAgentRandom(PlayerAgent):
         possibleActions = gameState.getLegalActions(self.agentIndex)
         if possibleActions:
             chosenAction = random.choice(possibleActions)
-            return (0, chosenAction)
+            if chosenAction[0] == ACTIONS.PLAY_DEV_CARD:
+                card_type = chosenAction[1]
+                if card_type == DevCardTypes.ROAD_BUILDING:
+                    legal_spots = self.get_legal_road_spots(gameState.board)
+                    roads = random.sample(legal_spots, min(2, len(legal_spots)))
+                    return (0, (ACTIONS.PLAY_DEV_CARD, (DevCardTypes.ROAD_BUILDING, roads)))
+                elif card_type == DevCardTypes.YEAR_OF_PLENTY:
+                    resources = self.choose_random_resources(2)
+                    return (0, (ACTIONS.PLAY_DEV_CARD, (card_type, resources)))
+                elif card_type == DevCardTypes.MONOPOLY:
+                    resource = random.choice(list(ResourceTypes))
+                    return (0, (ACTIONS.PLAY_DEV_CARD, (card_type, resource)))
+                else:
+                    return (0, chosenAction)
+            else:
+                return (0, chosenAction)
         return (0, (ACTIONS.PASS, None))
 
     def canTakeAction(self, action):
@@ -604,6 +691,23 @@ class PlayerAgentRandom(PlayerAgent):
     
     def discard_half_on_seven(self, gameState):
         return super().discard_half_on_seven(gameState)
+
+    def choose_random_roads(self, board, count):
+        possible_roads = []
+        if self.canBuildRoad():
+            for road in self.roads:
+                vertices = board.getVertexEnds(road)
+                for vertex in vertices:
+                    edges = board.getEdgesOfVertex(vertex)
+                    for edge in edges:
+                        if not edge.isOccupied():
+                            possible_roads.append((edge.X, edge.Y))
+        if len(possible_roads) < count:
+            return possible_roads  # Return all possible roads if there are fewer than requested
+        return random.sample(possible_roads, count)
+
+    def choose_random_resources(self, count):
+        return random.choices(list(ResourceTypes), k=count)
 
 class PlayerAgentExpectimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn=defaultEvalFn):
