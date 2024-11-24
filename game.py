@@ -234,6 +234,8 @@ class Game:
                                          self.start_button.y + (self.start_button.height - new_game_text.get_height()) // 2))
 
     def reset_game(self):
+        if VERBOSE and DEBUG:
+            print("Resetting game")
         self.moveHistory = []
         self.gameState = GameState()
         self.currentAgentIndex = 0
@@ -242,6 +244,18 @@ class Game:
             self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
         self.initializePlayers()
         self.initializeSettlementsAndResourcesLumberBrick()
+
+        if VERBOSE and DEBUG:
+            print("Player agent nums: ", self.playerAgentNums)
+
+        for i, agent_num in enumerate(self.playerAgentNums):
+            if VERBOSE and DEBUG:
+                print("Agent num: ", agent_num)
+            if agent_num == 13:
+                if VERBOSE and DEBUG:
+                    print("Setting draw for human avent")
+                self.gameState.playerAgents[i].set_draw(self.draw)
+
 
     def drawGame(self):
         self.draw.drawBG()
