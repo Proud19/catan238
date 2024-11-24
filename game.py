@@ -268,7 +268,8 @@ class Game:
             9: lambda name, index, color: PlayerAgentAlphaBeta(name, index, color, depth=DEPTH, evalFn=resourceEvalFn),
             10: lambda name, index, color: PlayerAgentAlphaBeta(name, index, color, depth=DEPTH, evalFn=betterEvalFn),
             11: lambda name, index, color: PlayerAgentExpectimax(name, index, color, depth=DEPTH, evalFn=betterEvalFn),
-            12: lambda name, index, color: PlayerAgentExpectiminimax(name, index, color, depth=DEPTH, evalFn=betterEvalFn)
+            12: lambda name, index, color: PlayerAgentExpectiminimax(name, index, color, depth=DEPTH, evalFn=betterEvalFn),
+            13: lambda name, index, color: PlayerAgentHuman(name, index, color)
         }
 
         return playerTypes.get(playerCode, PlayerAgentRandom)(playerName, index, color)
@@ -532,7 +533,8 @@ def getStringForPlayer(playerCode):
         9: "AlphaBeta Agent - with resource Heuristic",
         10: "AlphaBeta Agent - with better Heuristic",
         11: "Expectimax Agent - with better Heuristic",
-        12: "Expectiminimax Agent - with better Heuristic"
+        12: "Expectiminimax Agent - with better Heuristic",
+        13: "Human Player"
     }
     return playerTypes.get(playerCode, "Not a player.")
 
@@ -553,7 +555,8 @@ def getPlayerAgentSpecifications():
             "AlphaBeta Agent - with resource Heuristic",
             "AlphaBeta Agent - with better Heuristic",
             "Expectimax Agent - with better Heuristic",
-            "Expectiminimax Agent - with better Heuristic"
+            "Expectiminimax Agent - with better Heuristic",
+            "Human Player"
         ]):
             print(f"{i}: {agent}")
 
