@@ -692,6 +692,95 @@ class PlayerAgentRandom(PlayerAgent):
     def discard_half_on_seven(self, gameState):
         return super().discard_half_on_seven(gameState)
 
+class PlayerAgentHuman(PlayerAgent):
+    def getAction(self, gameState):
+        possibleActions = gameState.getLegalActions(self.agentIndex)
+        if possibleActions:
+
+            print(f"Player {self.agentIndex} - Choose an action:")
+            for i, action in enumerate(possibleActions):
+                print(f"{i + 1}: {action}")
+
+            actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
+
+            if actionIndex < 0 or actionIndex >= len(possibleActions):
+                print("Invalid action index. Please try again.")
+                actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
+
+            chosenAction = possibleActions[actionIndex]
+            
+            if chosenAction[0] == ACTIONS.PLAY_DEV_CARD:
+                card_type = chosenAction[1]
+                if card_type == DevCardTypes.ROAD_BUILDING:
+                    legal_spots = self.get_legal_road_spots(gameState.board)
+
+                    print("Choose two roads to build:")
+                    for i, spot in enumerate(legal_spots):
+                        print(f"{i + 1}: {spot}")
+                    road1 = int(input("Enter the number of the first road: ")) - 1
+                    road2 = int(input("Enter the number of the second road: ")) - 1
+                    roads = [legal_spots[road1], legal_spots[road2]]
+                    return (0, (ACTIONS.PLAY_DEV_CARD, (DevCardTypes.ROAD_BUILDING, roads)))
+                elif card_type == DevCardTypes.YEAR_OF_PLENTY:
+                    print("Choose two resources to collect:")
+                    resources = []
+                    for i in range(2):
+                        resource = int(input(f"Enter the number of resource {i + 1}: "))
+                        resources.append(ResourceTypes(resource))
+                    return (0, (ACTIONS.PLAY_DEV_CARD, (card_type, resources)))
+                elif card_type == DevCardTypes.MONOPOLY:
+                    resource = int(input("Choose a resource to steal: "))
+                    return (0, (ACTIONS.PLAY_DEV_CARD, (card_type, ResourceTypes(resource))))
+                else:
+                    return (0, chosenAction)
+            else:
+                return (0, chosenAction)
+        return (0, (ACTIONS.PASS, None))
+
+    def canTakeAction(self, action):
+        if action[0] == ACTIONS.ROAD:
+            return self.canBuildRoad()
+        elif action[0] == ACTIONS.SETTLE:
+            return self.canSettle()
+        elif action[0] == ACTIONS.CITY:
+            return self.canBuildCity()
+        elif action[0] == ACTIONS.TRADE:
+            return self.canTrade()
+        elif action[0] == ACTIONS.PASS:
+            return self.canPass()
+        return False
+
+    def choose_robber_placement(self, board):
+        valid_hexes = board.get_valid_robber_hexes()
+
+        print("Choose a hex to place the robber:")
+        for i, hex in enumerate(valid_hexes):
+            print(f"{i + 1}: {hex}")
+        hexIndex = int(input("Enter the number of the hex you want to place the robber on: ")) - 1
+
+        if hexIndex < 0 or hexIndex >= len(valid_hexes):
+            print("Invalid hex index. Please try again.")
+            hexIndex = int(input("Enter the number of the hex you want to place the robber on: ")) - 1
+
+        return valid_hexes[hexIndex]
+    
+    def discard_half_on_seven(self, gameState):
+        
+        print("Choose half of your resources to discard:")
+        for resource, count in self.resources.items():
+            print(f"{resource.name.capitalize()}: {count}")
+
+        discard_count = sum(self.resources.values()) // 2
+        print(f"Discard {discard_count} resources.")
+        discarded = Counter()
+        for _ in range(discard_count):
+            resource = int(input("Enter the number of the resource you want to discard: "))
+            discarded[ResourceTypes(resource)] += 1
+
+        self.resources -= discarded
+        gameState.bank += discarded
+        return discarded
+
     def choose_random_roads(self, board, count):
         possible_roads = []
         if self.canBuildRoad():
