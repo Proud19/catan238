@@ -692,6 +692,23 @@ class PlayerAgentRandom(PlayerAgent):
     def discard_half_on_seven(self, gameState):
         return super().discard_half_on_seven(gameState)
 
+    def choose_random_roads(self, board, count):
+        possible_roads = []
+        if self.canBuildRoad():
+            for road in self.roads:
+                vertices = board.getVertexEnds(road)
+                for vertex in vertices:
+                    edges = board.getEdgesOfVertex(vertex)
+                    for edge in edges:
+                        if not edge.isOccupied():
+                            possible_roads.append((edge.X, edge.Y))
+        if len(possible_roads) < count:
+            return possible_roads  # Return all possible roads if there are fewer than requested
+        return random.sample(possible_roads, count)
+
+    def choose_random_resources(self, count):
+        return random.choices(list(ResourceTypes), k=count)
+
 class PlayerAgentHuman(PlayerAgent):
     def getAction(self, gameState):
         possibleActions = gameState.getLegalActions(self.agentIndex)
@@ -765,38 +782,37 @@ class PlayerAgentHuman(PlayerAgent):
         return valid_hexes[hexIndex]
     
     def discard_half_on_seven(self, gameState):
-        
+        total_count = sum(self.resources.values())
+        if total_count <= 7:
+            return None
+
         print("Choose half of your resources to discard:")
         for resource, count in self.resources.items():
             print(f"{resource.name.capitalize()}: {count}")
 
-        discard_count = sum(self.resources.values()) // 2
-        print(f"Discard {discard_count} resources.")
-        discarded = Counter()
-        for _ in range(discard_count):
-            resource = int(input("Enter the number of the resource you want to discard: "))
-            discarded[ResourceTypes(resource)] += 1
+        # Print the number associated with each resource
+        resource_index = 1
+        resource_indices = {}
+        for resource, count in self.resources.items():
+            if count > 0:
+                print(f"{resource_index}: {resource.name.capitalize()}")
+                resource_indices[resource_index] = resource
+                resource_index += 1
 
-        self.resources -= discarded
+        discard_count = total_count // 2
+        discarded = Counter()
+        for i in range(discard_count):
+            resource = int(input("Enter the number of the resource you want to discard: "))
+            resource_type = resource_indices.get(resource)
+            if resource_type and self.resources[resource_type] > 0:
+                discarded[resource_type] += 1
+                self.resources[resource_type] -= 1
+            else:
+                print("Invalid resource index. Please try again.")
+                i -= 1
+
         gameState.bank += discarded
         return discarded
-
-    def choose_random_roads(self, board, count):
-        possible_roads = []
-        if self.canBuildRoad():
-            for road in self.roads:
-                vertices = board.getVertexEnds(road)
-                for vertex in vertices:
-                    edges = board.getEdgesOfVertex(vertex)
-                    for edge in edges:
-                        if not edge.isOccupied():
-                            possible_roads.append((edge.X, edge.Y))
-        if len(possible_roads) < count:
-            return possible_roads  # Return all possible roads if there are fewer than requested
-        return random.sample(possible_roads, count)
-
-    def choose_random_resources(self, count):
-        return random.choices(list(ResourceTypes), k=count)
 
 class PlayerAgentExpectimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn=defaultEvalFn):
