@@ -716,7 +716,7 @@ class PlayerAgentHuman(PlayerAgent):
 
             print(f"Player {self.agentIndex} - Choose an action:")
             for i, action in enumerate(possibleActions):
-                print(f"{i + 1}: {action}")
+                print(f"{i + 1}: {action[0].name}: {action[1]}")
 
             actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
 
