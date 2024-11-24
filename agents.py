@@ -3,6 +3,11 @@ import copy
 from gameConstants import *
 import random
 import time
+import pygame
+from pygame.locals import *
+import sys
+import math
+from board import Edge
 
 def builderEvalFn(currentGameState, currentPlayerIndex):
     currentPlayer = currentGameState.playerAgents[currentPlayerIndex]
@@ -83,6 +88,7 @@ class PlayerAgent(object):
         self.color = color
         self.victoryPoints = 2  # Each player starts with initial settlements giving 2 VP
         self.depth = depth
+        self.draw = None
 
         self.roads = []
         self.settlements = []
@@ -110,10 +116,13 @@ class PlayerAgent(object):
     def __repr__(self):
         s = f"---------- {self.name} : {self.color} ----------\n"
         s += f"Victory points: {self.victoryPoints}\n"
-        s += f"Resources: {self.resources}\n"
-        s += f"Settlements ({self.numSettlements}/{MAX_SETTLEMENTS}): {self.settlements}\n"
-        s += f"Roads ({self.numRoads}/{MAX_ROADS}): {self.roads}\n"
-        s += f"Cities ({self.numCities}/{MAX_CITIES}): {self.cities}\n"
+        s += f"Resources: "
+        for resource in self.resources:
+            s += f"{resource.name.capitalize()} ({self.resources[resource]}) "
+        s += "\n"
+        # s += f"Settlements ({self.numSettlements}/{MAX_SETTLEMENTS}): {self.settlements}\n"
+        # s += f"Roads ({self.numRoads}/{MAX_ROADS}): {self.roads}\n"
+        # s += f"Cities ({self.numCities}/{MAX_CITIES}): {self.cities}\n"
         
         # Add Development Cards information
         s += "Development Cards:\n"
@@ -710,25 +719,92 @@ class PlayerAgentRandom(PlayerAgent):
         return random.choices(list(ResourceTypes), k=count)
 
 class PlayerAgentHuman(PlayerAgent):
+    def set_draw(self, draw):
+        self.draw = draw
+
     def getAction(self, gameState):
         possibleActions = gameState.getLegalActions(self.agentIndex)
         if possibleActions:
 
             print(f"Player {self.agentIndex} - Choose an action:")
+            action_map = {}
             for i, action in enumerate(possibleActions):
-                print(f"{i + 1}: {action[0].name}: {action[1]}")
+                if action[0] not in action_map:
+                    action_map[action[0]] = []
+                action_map[action[0]].append(action[1])
+
+            index_map = {}
+            for i, action in enumerate(action_map):
+                index_map[i] = action
+                print(f"{i+1}: {action.name.capitalize()}")
 
             actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
 
-            if actionIndex < 0 or actionIndex >= len(possibleActions):
+            while actionIndex < 0 or actionIndex >= len(action_map):
                 print("Invalid action index. Please try again.")
                 actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
 
-            chosenAction = possibleActions[actionIndex]
+            chosenAction = index_map[actionIndex]
+
+            if chosenAction == ACTIONS.ROAD:
+                road_spot = self.choose_road_spot(action_map[chosenAction], gameState)
+                return (0, (chosenAction, road_spot))
             
-            if chosenAction[0] == ACTIONS.PLAY_DEV_CARD:
-                card_type = chosenAction[1]
-                if card_type == DevCardTypes.ROAD_BUILDING:
+            elif chosenAction == ACTIONS.SETTLE or chosenAction == ACTIONS.CITY:
+                spot = self.choose_spot(action_map[chosenAction], gameState, chosenAction)
+                return (0, (chosenAction, spot))
+            
+            elif chosenAction == ACTIONS.TRADE:
+                chosen_trade = -1
+                print("Possible trades: ")
+                for i, trade_items in enumerate(action_map[chosenAction]):
+                    print(f"{i+1}: Trade {trade_items[0].name.capitalize()} for {trade_items[1].name.capitalize()}")
+                
+                chosen_trade = int(input("Enter the number of the trade you want to make: ")) - 1
+                while chosen_trade < 0 or chosen_trade >= len(action_map[chosenAction]):
+                    print("Invalid trade index. Please try again.")
+                    chosen_trade = int(input("Enter the number of the trade you want to make: ")) - 1
+                
+                return (0, (chosenAction, action_map[chosenAction][chosen_trade]))
+
+            
+            elif chosenAction == ACTIONS.PLAY_DEV_CARD:
+                possible_cards = []
+                j = 1
+                print("Possible cards: ")
+                for i, item in enumerate(action_map[chosenAction]):
+                    if item[0] not in possible_cards: # BROKE FOR YEAR OF PLENTY
+                        possible_cards.append(item[0])
+                        print(f"{j}: {item[0].name.capitalize()}")
+                
+                card_index = int(input("Enter the number of the card you want to play: ")) - 1
+                while card_index < 0 or card_index >= len(possible_cards):
+                    print("Choose a valid card.")
+                    card_index = int(input("Enter the number of the card you want to play: ")) - 1
+
+                card_type = possible_cards[card_index]
+
+                if card_type == DevCardTypes.VICTORY_POINT:
+                    pass # automatically used
+                elif DevCardTypes.KNIGHT:
+                    # possible_locations = []
+                    # for item in action_map[chosenAction]:
+                    #     possible_locations.append(item[1])
+
+                    # print("Possible locations: ")
+                    # for i, loc in enumerate(possible_locations):
+                    #     print(f"{i+1}: {loc}")
+                    
+                    # loc_index = int(input("Enter the number of the location you want to choose: ")) - 1
+                    # while loc_index < 0 or loc_index >= len(possible_locations):
+                    #     print("Choose a valid location.")
+                    #     loc_index = int(input("Enter the number of the location you want to choose: ")) - 1
+
+                    # return (0, (chosenAction, (card_type, possible_locations[loc_index])))
+                    
+                    return (0, (chosenAction, (card_type, self.choose_robber_placement(gameState.board))))
+
+                elif card_type == DevCardTypes.ROAD_BUILDING:
                     legal_spots = self.get_legal_road_spots(gameState.board)
 
                     print("Choose two roads to build:")
@@ -748,11 +824,12 @@ class PlayerAgentHuman(PlayerAgent):
                 elif card_type == DevCardTypes.MONOPOLY:
                     resource = int(input("Choose a resource to steal: "))
                     return (0, (ACTIONS.PLAY_DEV_CARD, (card_type, ResourceTypes(resource))))
-                else:
-                    return (0, chosenAction)
-            else:
-                return (0, chosenAction)
-        return (0, (ACTIONS.PASS, None))
+
+        # buy dev card, play knight, pass
+        # confirmed
+        print("Showing possible vals associated with action:")
+        print(action_map[chosenAction])
+        return (0, (chosenAction, None))
 
     def canTakeAction(self, action):
         if action[0] == ACTIONS.ROAD:
@@ -813,6 +890,79 @@ class PlayerAgentHuman(PlayerAgent):
 
         gameState.bank += discarded
         return discarded
+    
+    def choose_road_spot(self, legal_edges, gameState):
+        print("Choose one road to build by clicking the GUI.")
+        selected_spot = None
+        threshold = 10  # Distance threshold for detecting clicks on roads
+
+        while selected_spot is None:
+            for event in pygame.event.get():
+                if event.type == QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == MOUSEBUTTONDOWN:
+                    x, y = event.pos
+                    if VERBOSE and DEBUG:
+                        print(f"Clicked GUI at {x}, {y}")
+                    for edge in legal_edges:
+                        start, end = gameState.board.getVertexEnds(edge)
+                        ox, oy = self.draw.calculateVertexPosition(start)
+                        ex, ey = self.draw.calculateVertexPosition(end)
+                        if DEBUG and VERBOSE:
+                            print("Args: ")
+                            print(x, y, ox, oy, ex, ey)
+                        dist = point_to_line_distance(x, y, ox, oy, ex, ey)
+                        if dist < threshold:
+                            selected_edge = edge
+                            if VERBOSE and DEBUG:
+                                print(f"Selected edge: {edge}")
+                            return selected_edge
+
+
+    def choose_spot(self, legal_vertices, gameState, action):
+        if action.name == "CITY":
+            print("Choose one city to build by clicking the GUI.")
+        elif action.name == "SETTLE":
+            print("Choose one settlement to build by clicking the GUI.")
+        else:
+            print("Error")
+    
+        selected_vertex = None
+        threshold = 10  # Distance threshold for detecting clicks on roads
+
+        while selected_vertex is None:
+            for event in pygame.event.get():
+                if event.type == QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == MOUSEBUTTONDOWN:
+                    x, y = event.pos
+                    for vertex in legal_vertices:
+                        xPos, yPos = self.draw.calculateVertexPosition(vertex)
+                        dist = point_to_point_distance(x, y, xPos, yPos)
+                        if dist < threshold:
+                            selected_vertex = vertex
+                            if VERBOSE and DEBUG:
+                                print(f"Selected vertex: {vertex}")
+                            return selected_vertex
+
+
+def point_to_line_distance(px, py, x1, y1, x2, y2):
+    # Calculate the distance from point (px, py) to the line segment (x1, y1) - (x2, y2)
+    line_mag = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    if line_mag < 1e-6:
+        return math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
+
+    u = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / (line_mag ** 2)
+    u = max(min(u, 1), 0)
+    ix = x1 + u * (x2 - x1)
+    iy = y1 + u * (y2 - y1)
+    return math.sqrt((px - ix) ** 2 + (py - iy) ** 2)
+
+def point_to_point_distance(x1, y1, x2, y2):
+    # Calculate the distance from point (x1, y1) to point (x2, y2)
+    return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
 class PlayerAgentExpectimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn=defaultEvalFn):

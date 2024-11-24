@@ -1,6 +1,6 @@
 import pygame
 from board import ResourceTypes
-from gameConstants import getColorForPlayer
+from gameConstants import getColorForPlayer, DEBUG, VERBOSE
 
 class Draw:
     def __init__(self, tiles, screen, board):
@@ -123,6 +123,8 @@ class Draw:
 
     def drawRoads(self, roads, board):
         for road in roads:
+            if DEBUG and VERBOSE:
+                print("Drawing road: ", road)
             start, end = board.getVertexEnds(road)
             ox, oy = self.calculateVertexPosition(start)
             ex, ey = self.calculateVertexPosition(end)
