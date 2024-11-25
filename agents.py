@@ -550,8 +550,8 @@ class PlayerAgentHuman(PlayerAgent):
                 actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
 
             chosenAction = index_map[actionIndex]
-            # if DEBUG and VERBOSE:
-            print(f"Chose action: {chosenAction}")
+            if DEBUG and VERBOSE:
+                print(f"Chose action: {chosenAction}")
 
             if chosenAction == ACTIONS.ROAD:
                 road_spot = self.choose_road_spot(action_map[chosenAction], gameState)

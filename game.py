@@ -309,63 +309,63 @@ class Game:
                 if VERBOSE:
                     print(f"No initial resources collected for {agent.name}")
 
-    def initializeSettlementsAndResourcesForSettlements(self):
-        if VERBOSE and DEBUG:
-            print("Initializing settlements and resources for settlements")
-        settlements = self.gameState.board.getRandomVerticesForAllResources()
-        for i, playerSettlements in enumerate(settlements):
-            agent = self.gameState.playerAgents[i]
-            for settlement in playerSettlements:
-                randomRoad = self.gameState.board.getRandomRoad(settlement)
-                self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, randomRoad))
-                agent.settlements.append(settlement)
-                agent.roads.append(randomRoad)
+    # def initializeSettlementsAndResourcesForSettlements(self):
+    #     if VERBOSE and DEBUG:
+    #         print("Initializing settlements and resources for settlements")
+    #     settlements = self.gameState.board.getRandomVerticesForAllResources()
+    #     for i, playerSettlements in enumerate(settlements):
+    #         agent = self.gameState.playerAgents[i]
+    #         for settlement in playerSettlements:
+    #             randomRoad = self.gameState.board.getRandomRoad(settlement)
+    #             self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, randomRoad))
+    #             agent.settlements.append(settlement)
+    #             agent.roads.append(randomRoad)
 
-        for agent in self.gameState.playerAgents:
-            agent.collectInitialResources(self.gameState.board)
+    #     for agent in self.gameState.playerAgents:
+    #         agent.collectInitialResources(self.gameState.board)
 
-    def initializeSettlementsAndResourcesRandom(self):
-        if VERBOSE and DEBUG:
-            print("Initializing settlements and resources randomly")
-        for agent in self.gameState.playerAgents:
-            for _ in range(NUM_INITIAL_SETTLEMENTS):
-                settlement = self.gameState.board.getRandomVertexForSettlement()
-                self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.SETTLE, settlement))
-                agent.settlements.append(settlement)
-                road = self.gameState.board.getRandomRoad(settlement)
-                self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, road))
-                agent.roads.append(road)
+    # def initializeSettlementsAndResourcesRandom(self):
+    #     if VERBOSE and DEBUG:
+    #         print("Initializing settlements and resources randomly")
+    #     for agent in self.gameState.playerAgents:
+    #         for _ in range(NUM_INITIAL_SETTLEMENTS):
+    #             settlement = self.gameState.board.getRandomVertexForSettlement()
+    #             self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.SETTLE, settlement))
+    #             agent.settlements.append(settlement)
+    #             road = self.gameState.board.getRandomRoad(settlement)
+    #             self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, road))
+    #             agent.roads.append(road)
 
-        for agent in self.gameState.playerAgents:
-            agent.collectInitialResources(self.gameState.board)
+    #     for agent in self.gameState.playerAgents:
+    #         agent.collectInitialResources(self.gameState.board)
 
-    def initializeSettlementsAndResourcesPreset(self):
-        if VERBOSE and DEBUG:
-            print("Initializing settlements and resources with preset values")
-        initialSettlements = [
-            (self.gameState.board.getVertex(2, 4), self.gameState.board.getVertex(4, 8)),
-            (self.gameState.board.getVertex(2, 8), self.gameState.board.getVertex(3, 5)),
-            (self.gameState.board.getVertex(3, 1), self.gameState.board.getVertex(4, 3)),
-            (self.gameState.board.getVertex(1, 4), self.gameState.board.getVertex(4, 6))
-        ]
-        initialRoads = [
-            (self.gameState.board.getEdge(4, 3), self.gameState.board.getEdge(8, 8)),
-            (self.gameState.board.getEdge(4, 7), self.gameState.board.getEdge(6, 4)),
-            (self.gameState.board.getEdge(6, 1), self.gameState.board.getEdge(8, 3)),
-            (self.gameState.board.getEdge(2, 3), self.gameState.board.getEdge(8, 6))
-        ]
+    # def initializeSettlementsAndResourcesPreset(self):
+    #     if VERBOSE and DEBUG:
+    #         print("Initializing settlements and resources with preset values")
+    #     initialSettlements = [
+    #         (self.gameState.board.getVertex(2, 4), self.gameState.board.getVertex(4, 8)),
+    #         (self.gameState.board.getVertex(2, 8), self.gameState.board.getVertex(3, 5)),
+    #         (self.gameState.board.getVertex(3, 1), self.gameState.board.getVertex(4, 3)),
+    #         (self.gameState.board.getVertex(1, 4), self.gameState.board.getVertex(4, 6))
+    #     ]
+    #     initialRoads = [
+    #         (self.gameState.board.getEdge(4, 3), self.gameState.board.getEdge(8, 8)),
+    #         (self.gameState.board.getEdge(4, 7), self.gameState.board.getEdge(6, 4)),
+    #         (self.gameState.board.getEdge(6, 1), self.gameState.board.getEdge(8, 3)),
+    #         (self.gameState.board.getEdge(2, 3), self.gameState.board.getEdge(8, 6))
+    #     ]
 
-        for i, agent in enumerate(self.gameState.playerAgents):
-            for s in range(NUM_INITIAL_SETTLEMENTS):
-                settlement = initialSettlements[i][s]
-                self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.SETTLE, settlement))
-                agent.settlements.append(settlement)
-                road = initialRoads[i][s]
-                self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, road))
-                agent.roads.append(road)
+    #     for i, agent in enumerate(self.gameState.playerAgents):
+    #         for s in range(NUM_INITIAL_SETTLEMENTS):
+    #             settlement = initialSettlements[i][s]
+    #             self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.SETTLE, settlement))
+    #             agent.settlements.append(settlement)
+    #             road = initialRoads[i][s]
+    #             self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, road))
+    #             agent.roads.append(road)
 
-        for agent in self.gameState.playerAgents:
-            agent.collectInitialResources(self.gameState.board)
+    #     for agent in self.gameState.playerAgents:
+    #         agent.collectInitialResources(self.gameState.board)
     
     def handle_seven_rolled(self, current_player):
         if VERBOSE:
