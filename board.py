@@ -279,7 +279,8 @@ class Board:
                 vertex = None
         return vertex
 
-    def getRandomVerticesForSettlement(self):
+    # Will pick lumber or brick hex
+    def getRandomVertexForSettlement(self):
         lumberHexes = [self.getLumberHex(i) for i in range(1, 5)]
         brickHexes = [self.getBrickHex(i) for i in range(1, 4)]
         
@@ -297,6 +298,7 @@ class Board:
                     playerSettlements.append(vertex)
             settlements.append(playerSettlements)
         
+        print("Settlements: ", settlements)
         return settlements
 
     def getRandomUnoccupiedVertexOnHex(self, hex):
