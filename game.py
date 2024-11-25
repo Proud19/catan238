@@ -251,7 +251,7 @@ class Game:
         for i, agent_num in enumerate(self.playerAgentNums):
             if VERBOSE and DEBUG:
                 print("Agent num: ", agent_num)
-            if agent_num == 13:
+            if agent_num == 1:
                 if VERBOSE and DEBUG:
                     print("Setting draw for human avent")
                 self.gameState.playerAgents[i].set_draw(self.draw)
@@ -271,19 +271,7 @@ class Game:
 
         playerTypes = {
             0: PlayerAgentRandom,
-            1: lambda name, index, color: PlayerAgentExpectiminimax(name, index, color, depth=DEPTH),
-            2: lambda name, index, color: PlayerAgentExpectiminimax(name, index, color, depth=DEPTH, evalFn=builderEvalFn),
-            3: lambda name, index, color: PlayerAgentExpectiminimax(name, index, color, depth=DEPTH, evalFn=resourceEvalFn),
-            4: lambda name, index, color: PlayerAgentExpectimax(name, index, color, depth=DEPTH, evalFn=betterEvalFn),
-            5: lambda name, index, color: PlayerAgentExpectimax(name, index, color, depth=DEPTH, evalFn=builderEvalFn),
-            6: lambda name, index, color: PlayerAgentExpectimax(name, index, color, depth=DEPTH, evalFn=resourceEvalFn),
-            7: lambda name, index, color: PlayerAgentAlphaBeta(name, index, color, depth=DEPTH),
-            8: lambda name, index, color: PlayerAgentAlphaBeta(name, index, color, depth=DEPTH, evalFn=builderEvalFn),
-            9: lambda name, index, color: PlayerAgentAlphaBeta(name, index, color, depth=DEPTH, evalFn=resourceEvalFn),
-            10: lambda name, index, color: PlayerAgentAlphaBeta(name, index, color, depth=DEPTH, evalFn=betterEvalFn),
-            11: lambda name, index, color: PlayerAgentExpectimax(name, index, color, depth=DEPTH, evalFn=betterEvalFn),
-            12: lambda name, index, color: PlayerAgentExpectiminimax(name, index, color, depth=DEPTH, evalFn=betterEvalFn),
-            13: lambda name, index, color: PlayerAgentHuman(name, index, color)
+            1: lambda name, index, color: PlayerAgentHuman(name, index, color)
         }
 
         return playerTypes.get(playerCode, PlayerAgentRandom)(playerName, index, color)
@@ -536,19 +524,7 @@ class Game:
 def getStringForPlayer(playerCode):
     playerTypes = {
         0: "Random Agent",
-        1: "ExpectiMiniMax Agent - with default heuristic",
-        2: "ExpectiMiniMax Agent - with builder Heuristic",
-        3: "ExpectiMiniMax Agent - with resource Heuristic",
-        4: "Expectimax Agent - with default heuristic",
-        5: "Expectimax Agent - with builder Heuristic",
-        6: "Expectimax Agent - with resource Heuristic",
-        7: "AlphaBeta Agent - with default Heuristic",
-        8: "AlphaBeta Agent - with builder Heuristic",
-        9: "AlphaBeta Agent - with resource Heuristic",
-        10: "AlphaBeta Agent - with better Heuristic",
-        11: "Expectimax Agent - with better Heuristic",
-        12: "Expectiminimax Agent - with better Heuristic",
-        13: "Human Player"
+        1: "Human Player"
     }
     return playerTypes.get(playerCode, "Not a player.")
 
@@ -558,18 +534,6 @@ def getPlayerAgentSpecifications():
         print("-----------------------------")
         for i, agent in enumerate([
             "Random Agent",
-            "ExpectiMiniMax Agent - with default heuristic",
-            "ExpectiMiniMax Agent - with builder Heuristic",
-            "ExpectiMiniMax Agent - with resource Heuristic",
-            "Expectimax Agent - with default heuristic",
-            "Expectimax Agent - with builder Heuristic",
-            "Expectimax Agent - with resource Heuristic",
-            "AlphaBeta Agent - with default Heuristic",
-            "AlphaBeta Agent - with builder Heuristic",
-            "AlphaBeta Agent - with resource Heuristic",
-            "AlphaBeta Agent - with better Heuristic",
-            "Expectimax Agent - with better Heuristic",
-            "Expectiminimax Agent - with better Heuristic",
             "Human Player"
         ]):
             print(f"{i}: {agent}")
