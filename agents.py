@@ -739,7 +739,6 @@ class PlayerAgentHuman(PlayerAgent):
                 print(f"{i+1}: {action.name.capitalize()}")
 
             actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
-
             while actionIndex < 0 or actionIndex >= len(action_map):
                 print("Invalid action index. Please try again.")
                 actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
@@ -771,11 +770,9 @@ class PlayerAgentHuman(PlayerAgent):
                 possible_cards = []
                 j = 1
                 print("Possible cards: ")
-                print(chosenAction)
-                print(action_map[chosenAction])
                 for i, item in enumerate(action_map[chosenAction]):
                     card_type = item if isinstance(item, DevCardTypes) else item[0]
-                    if card_type not in possible_cards: # BROKE FOR YEAR OF PLENTY, MONOPOLY, ROAD BUILDING
+                    if card_type not in possible_cards:
                         possible_cards.append(card_type)
                         print(f"{j}: {card_type.name.capitalize()}")
                 
@@ -798,13 +795,8 @@ class PlayerAgentHuman(PlayerAgent):
                     print("Choose two roads to build:")
                     edge1 = self.choose_road_spot(legal_edges, gameState)
                     self.buildRoad((edge1.X, edge1.Y), gameState.board, gameState)
-                    # print(f"Chose edge {edge1}")
-                    # print(legal_edges)
-                    # legal_edges.remove(edge1)
-                    # print(legal_edges)
                     legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
                     edge2 = self.choose_road_spot(legal_edges, gameState)
-                    # print(f"Chose spot {edge2}")
 
                     return (0, (ACTIONS.PLAY_DEV_CARD, (DevCardTypes.ROAD_BUILDING, [(edge1.X, edge1.Y), (edge2.X, edge2.Y)])))
                 elif card_type == DevCardTypes.YEAR_OF_PLENTY:
@@ -832,10 +824,10 @@ class PlayerAgentHuman(PlayerAgent):
                         resource = int(input("Choose a resource to steal: "))
                     return (0, (ACTIONS.PLAY_DEV_CARD, (card_type, ResourceTypes(resource))))
 
-        # buy dev card, play knight, pass
-        # confirmed
-        print("Showing possible vals associated with action:")
-        print(possibleActions)
+        # # buy dev card, play knight, pass
+        # # confirmed
+        # print("Showing possible vals associated with action:")
+        # print(possibleActions)
         return (0, (chosenAction, None))
 
     def canTakeAction(self, action):
