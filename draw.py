@@ -1,6 +1,5 @@
 import pygame
-from board import ResourceTypes
-from gameConstants import getColorForPlayer, DEBUG, VERBOSE
+from gameConstants import getColorForPlayer, DEBUG, VERBOSE, ResourceTypes
 
 class Draw:
     def __init__(self, tiles, screen, board):

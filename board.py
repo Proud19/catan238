@@ -2,23 +2,13 @@ from enum import Enum
 import random
 from gameConstants import *
 
-# Possible actions a player can take
-class Actions(Enum):
-    DRAW = 1
-    SETTLE = 2
-    CITY = 3
-    ROAD = 4
-    TRADE = 5
-
-# A dictionary from resource type (enum, above) to string representation
-ResourceDict = {
-    ResourceTypes.GRAIN: "G",
-    ResourceTypes.WOOL: "W",
-    ResourceTypes.ORE: "O",
-    ResourceTypes.LUMBER: "L",
-    ResourceTypes.BRICK: "B",
-    ResourceTypes.NOTHING: "N"
-}
+# # Possible actions a player can take
+# class Actions(Enum):
+#     DRAW = 1
+#     SETTLE = 2
+#     CITY = 3
+#     ROAD = 4
+#     TRADE = 5
 
 class Hexagon:
     def __init__(self, X, Y, resource, diceValue):
@@ -259,7 +249,7 @@ class Board:
             for resource in resourcesForSettlement:
                 randomHex = self.getRandomResourceHex(resource)
                 randomVertex = self.getRandomVertexOnHex(randomHex)
-                self.applyAction(playerAgent, (Actions.SETTLE, randomVertex))
+                self.applyAction(playerAgent, (ACTIONS.SETTLE, randomVertex))
                 verticesForPlayer.append(randomVertex)
             randomVerticesForBothPlayers.append(verticesForPlayer)
         return randomVerticesForBothPlayers
