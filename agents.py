@@ -772,8 +772,10 @@ class PlayerAgentHuman(PlayerAgent):
                 possible_cards = []
                 j = 1
                 print("Possible cards: ")
+                print(chosenAction)
+                print(action_map[chosenAction])
                 for i, item in enumerate(action_map[chosenAction]):
-                    if item[0] not in possible_cards: # BROKE FOR YEAR OF PLENTY
+                    if item[0] not in possible_cards: # BROKE FOR YEAR OF PLENTY, MONOPOLY
                         possible_cards.append(item[0])
                         print(f"{j}: {item[0].name.capitalize()}")
                 
@@ -787,21 +789,6 @@ class PlayerAgentHuman(PlayerAgent):
                 if card_type == DevCardTypes.VICTORY_POINT:
                     pass # automatically used
                 elif DevCardTypes.KNIGHT:
-                    # possible_locations = []
-                    # for item in action_map[chosenAction]:
-                    #     possible_locations.append(item[1])
-
-                    # print("Possible locations: ")
-                    # for i, loc in enumerate(possible_locations):
-                    #     print(f"{i+1}: {loc}")
-                    
-                    # loc_index = int(input("Enter the number of the location you want to choose: ")) - 1
-                    # while loc_index < 0 or loc_index >= len(possible_locations):
-                    #     print("Choose a valid location.")
-                    #     loc_index = int(input("Enter the number of the location you want to choose: ")) - 1
-
-                    # return (0, (chosenAction, (card_type, possible_locations[loc_index])))
-                    
                     return (0, (chosenAction, (card_type, self.choose_robber_placement(gameState.board))))
 
                 elif card_type == DevCardTypes.ROAD_BUILDING:
@@ -845,18 +832,9 @@ class PlayerAgentHuman(PlayerAgent):
         return False
 
     def choose_robber_placement(self, board):
+        print("Choose robber location on the GUI.")
         valid_hexes = board.get_valid_robber_hexes()
-
-        print("Choose a hex to place the robber:")
-        for i, hex in enumerate(valid_hexes):
-            print(f"{i + 1}: {hex}")
-        hexIndex = int(input("Enter the number of the hex you want to place the robber on: ")) - 1
-
-        if hexIndex < 0 or hexIndex >= len(valid_hexes):
-            print("Invalid hex index. Please try again.")
-            hexIndex = int(input("Enter the number of the hex you want to place the robber on: ")) - 1
-
-        return valid_hexes[hexIndex]
+        return self.choose_robber_loc(valid_hexes)
     
     def discard_half_on_seven(self, gameState):
         total_count = sum(self.resources.values())
@@ -920,7 +898,7 @@ class PlayerAgentHuman(PlayerAgent):
                             return selected_edge
 
 
-    def choose_spot(self, legal_vertices, gameState, action):
+    def choose_spot(self, legal_vertices, action):
         if action.name == "CITY":
             print("Choose one city to build by clicking the GUI.")
         elif action.name == "SETTLE":
@@ -946,7 +924,27 @@ class PlayerAgentHuman(PlayerAgent):
                             if VERBOSE and DEBUG:
                                 print(f"Selected vertex: {vertex}")
                             return selected_vertex
+    
+    def choose_robber_loc(self, legal_hexes):
+        selected_hex = None
+        threshold = 10  # Distance threshold for detecting clicks on roads
 
+        while selected_hex is None:
+            for event in pygame.event.get():
+                if event.type == QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == MOUSEBUTTONDOWN:
+                    x, y = event.pos
+                    for hex in legal_hexes:
+                        xPos, yPos = self.draw.hex_centers[hex]
+
+                        dist = point_to_point_distance(x, y, xPos, yPos)
+                        if dist < threshold:
+                            selected_hex = hex
+                            if VERBOSE and DEBUG:
+                                print(f"Selected hex: {hex}")
+                            return hex
 
 def point_to_line_distance(px, py, x1, y1, x2, y2):
     # Calculate the distance from point (px, py) to the line segment (x1, y1) - (x2, y2)
