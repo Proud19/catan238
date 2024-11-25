@@ -116,9 +116,7 @@ class PlayerAgent(object):
     def __repr__(self):
         s = f"---------- {self.name} : {self.color} ----------\n"
         s += f"Victory points: {self.victoryPoints}\n"
-        s += f"Resources: "
-        for resource in self.resources:
-            s += f"{resource.name.capitalize()} ({self.resources[resource]}) "
+        s += self.get_resources_as_string()
         s += "\n"
         # s += f"Settlements ({self.numSettlements}/{MAX_SETTLEMENTS}): {self.settlements}\n"
         # s += f"Roads ({self.numRoads}/{MAX_ROADS}): {self.roads}\n"
@@ -138,9 +136,11 @@ class PlayerAgent(object):
         s += "--------------------------------------------\n"
         return s
 
-    def print_resources(self):
-        for resource, amount in self.resources.items():
-            print(f"{resource.name.capitalize()}: {amount}")
+    def get_resources_as_string(self):
+        s = f"Resources: "
+        for resource in self.resources:
+            s += f"{resource.name.capitalize()} ({self.resources[resource]}) "
+        return s
 
     def canBuildRoad(self):
         return (
@@ -530,7 +530,9 @@ class PlayerAgentHuman(PlayerAgent):
         possibleActions = gameState.getLegalActions(self.agentIndex)
         if possibleActions:
 
+            print(self.get_resources_as_string())
             print(f"Player {self.agentIndex} - Choose an action:")
+            
             action_map = {}
             for i, action in enumerate(possibleActions):
                 if action[0] not in action_map:
@@ -548,6 +550,8 @@ class PlayerAgentHuman(PlayerAgent):
                 actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
 
             chosenAction = index_map[actionIndex]
+            # if DEBUG and VERBOSE:
+            print(f"Chose action: {chosenAction}")
 
             if chosenAction == ACTIONS.ROAD:
                 road_spot = self.choose_road_spot(action_map[chosenAction], gameState)
@@ -627,9 +631,10 @@ class PlayerAgentHuman(PlayerAgent):
                     while resource not in [1,2,3,4,5]:
                         resource = int(input("Choose a resource to steal: "))
                     return (0, (ACTIONS.PLAY_DEV_CARD, (card_type, ResourceTypes(resource))))
-                else:
-                    # buy dev card, play knight, pass
-                    return (0, (chosenAction, None))
+            else:
+                # buy dev card, play knight, pass
+                return (0, (chosenAction, None))
+                
         return (0, (ACTIONS.PASS, None))
 
     def canTakeAction(self, action):

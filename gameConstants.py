@@ -81,12 +81,6 @@ DEV_CARD_DECK = [DevCardTypes.KNIGHT] * 14 + [DevCardTypes.VICTORY_POINT] * 5 + 
                 [DevCardTypes.ROAD_BUILDING] * 2 + [DevCardTypes.YEAR_OF_PLENTY] * 2 + \
                 [DevCardTypes.MONOPOLY] * 2
 
-# DEV_CARD_DECK = [DevCardTypes.KNIGHT] * 14
-# DEV_CARD_DECK = [DevCardTypes.VICTORY_POINT] * 5
-# DEV_CARD_DECK = [DevCardTypes.ROAD_BUILDING] * 2
-# DEV_CARD_DECK = [DevCardTypes.YEAR_OF_PLENTY] * 2
-# DEV_CARD_DECK = [DevCardTypes.MONOPOLY] * 2
-
 # A dictionary from resource type (enum, above) to string representation
 # so we can print out the resource type easily
 ResourceDict = {ResourceTypes.GRAIN:"G", ResourceTypes.WOOL:"W", ResourceTypes.ORE:"O", ResourceTypes.LUMBER:"L", ResourceTypes.BRICK:"B", ResourceTypes.NOTHING:"N"}
