@@ -751,7 +751,7 @@ class PlayerAgentHuman(PlayerAgent):
                 return (0, (chosenAction, road_spot))
             
             elif chosenAction == ACTIONS.SETTLE or chosenAction == ACTIONS.CITY:
-                spot = self.choose_spot(action_map[chosenAction], gameState, chosenAction)
+                spot = self.choose_spot(action_map[chosenAction], chosenAction)
                 return (0, (chosenAction, spot))
             
             elif chosenAction == ACTIONS.TRADE:
@@ -766,7 +766,6 @@ class PlayerAgentHuman(PlayerAgent):
                     chosen_trade = int(input("Enter the number of the trade you want to make: ")) - 1
                 
                 return (0, (chosenAction, action_map[chosenAction][chosen_trade]))
-
             
             elif chosenAction == ACTIONS.PLAY_DEV_CARD:
                 possible_cards = []
@@ -775,9 +774,10 @@ class PlayerAgentHuman(PlayerAgent):
                 print(chosenAction)
                 print(action_map[chosenAction])
                 for i, item in enumerate(action_map[chosenAction]):
-                    if item[0] not in possible_cards: # BROKE FOR YEAR OF PLENTY, MONOPOLY
-                        possible_cards.append(item[0])
-                        print(f"{j}: {item[0].name.capitalize()}")
+                    card_type = item if isinstance(item, DevCardTypes) else item[0]
+                    if card_type not in possible_cards: # BROKE FOR YEAR OF PLENTY, MONOPOLY, ROAD BUILDING
+                        possible_cards.append(card_type)
+                        print(f"{j}: {card_type.name.capitalize()}")
                 
                 card_index = int(input("Enter the number of the card you want to play: ")) - 1
                 while card_index < 0 or card_index >= len(possible_cards):
@@ -785,37 +785,57 @@ class PlayerAgentHuman(PlayerAgent):
                     card_index = int(input("Enter the number of the card you want to play: ")) - 1
 
                 card_type = possible_cards[card_index]
+                print(card_type)
 
                 if card_type == DevCardTypes.VICTORY_POINT:
                     pass # automatically used
-                elif DevCardTypes.KNIGHT:
+                elif card_type == DevCardTypes.KNIGHT:
                     return (0, (chosenAction, (card_type, self.choose_robber_placement(gameState.board))))
 
                 elif card_type == DevCardTypes.ROAD_BUILDING:
-                    legal_spots = self.get_legal_road_spots(gameState.board)
+                    legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
 
                     print("Choose two roads to build:")
-                    for i, spot in enumerate(legal_spots):
-                        print(f"{i + 1}: {spot}")
-                    road1 = int(input("Enter the number of the first road: ")) - 1
-                    road2 = int(input("Enter the number of the second road: ")) - 1
-                    roads = [legal_spots[road1], legal_spots[road2]]
-                    return (0, (ACTIONS.PLAY_DEV_CARD, (DevCardTypes.ROAD_BUILDING, roads)))
+                    edge1 = self.choose_road_spot(legal_edges, gameState)
+                    self.buildRoad((edge1.X, edge1.Y), gameState.board, gameState)
+                    # print(f"Chose edge {edge1}")
+                    # print(legal_edges)
+                    # legal_edges.remove(edge1)
+                    # print(legal_edges)
+                    legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
+                    edge2 = self.choose_road_spot(legal_edges, gameState)
+                    # print(f"Chose spot {edge2}")
+
+                    return (0, (ACTIONS.PLAY_DEV_CARD, (DevCardTypes.ROAD_BUILDING, [(edge1.X, edge1.Y), (edge2.X, edge2.Y)])))
                 elif card_type == DevCardTypes.YEAR_OF_PLENTY:
                     print("Choose two resources to collect:")
+
+                    # Print out the numbers associated with each resource type
+                    for resource, amount in gameState.bank.items():
+                        if amount > 0:
+                            print(f"{resource.value}: {resource.name.capitalize()}")
+
                     resources = []
-                    for i in range(2):
-                        resource = int(input(f"Enter the number of resource {i + 1}: "))
-                        resources.append(ResourceTypes(resource))
+                    while (len(resources) < 2):
+                        resource_num = int(input(f"Enter the number of the resource you would like from the bank: "))
+                        resource = ResourceTypes(resource_num)
+                        if gameState.bank[resource] > 1 or (gameState.bank[resource] > 0 and resource not in resources):
+                            resources.append(resource)
+                    
                     return (0, (ACTIONS.PLAY_DEV_CARD, (card_type, resources)))
                 elif card_type == DevCardTypes.MONOPOLY:
-                    resource = int(input("Choose a resource to steal: "))
+                    for resource, amount in gameState.bank.items():
+                        if amount > 0:
+                            print(f"{resource.value}: {resource.name.capitalize()}")
+                    resource = -1
+                    while resource not in [1,2,3,4,5]:
+                        resource = int(input("Choose a resource to steal: "))
                     return (0, (ACTIONS.PLAY_DEV_CARD, (card_type, ResourceTypes(resource))))
 
         # buy dev card, play knight, pass
         # confirmed
         print("Showing possible vals associated with action:")
-        print(action_map[chosenAction])
+        print(possibleActions)
         return (0, (chosenAction, None))
 
     def canTakeAction(self, action):
