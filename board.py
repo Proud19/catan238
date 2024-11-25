@@ -279,8 +279,7 @@ class Board:
                 vertex = None
         return vertex
 
-    # Will pick lumber or brick hex
-    def getRandomVertexForSettlement(self):
+    def getRandomVerticesForSettlement(self):
         lumberHexes = [self.getLumberHex(i) for i in range(1, 5)]
         brickHexes = [self.getBrickHex(i) for i in range(1, 4)]
         

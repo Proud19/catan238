@@ -94,7 +94,7 @@ class GameState:
         player_resources = {i: Counter() for i in range(NUM_PLAYERS)}
 
         for hexagon in hexagons:
-            if hexagon.resource != ResourceTypes.NOTHING:
+            if (hexagon.resource != ResourceTypes.NOTHING):
                 for vertex in self.board.getVertices(hexagon):
                     if vertex.player is not None:
                         player_resources[vertex.player][hexagon.resource] += 1
@@ -244,6 +244,7 @@ class Game:
             self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
         self.initializePlayers()
         self.initializeSettlementsAndResourcesLumberBrick()
+        self.initializeBasedOnPlayerAgent()
 
         if VERBOSE and DEBUG:
             print("Player agent nums: ", self.playerAgentNums)
@@ -281,6 +282,13 @@ class Game:
             self.playerAgentNums = getPlayerAgentSpecifications()
         for i in range(NUM_PLAYERS):
             self.gameState.playerAgents[i] = self.createPlayer(self.playerAgentNums[i], i)
+
+    # def initializeBasedOnPlayerAgent(self):
+    #     # Player 0's goes first
+    #     if isinstance(self.gameState.playerAgents[0], PlayerAgentHuman):
+    #         print("Player 0 is a human")
+    #     elif isinstance(self.gameState.playerAgents[0], PlayerAgentRandom):
+    #         print("Player 0 random")
 
     def initializeSettlementsAndResourcesLumberBrick(self):
         settlements = self.gameState.board.getRandomVerticesForSettlement()
