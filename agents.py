@@ -558,7 +558,7 @@ class PlayerAgentHuman(PlayerAgent):
                 print(f"Chose action: {chosenAction}")
 
             if chosenAction == ACTIONS.ROAD:
-                road_spot = choose_edge(action_map[chosenAction], gameState, self.draw)
+                road_spot = choose_edge(action_map[chosenAction], gameState.board, self.draw)
                 return (0, (chosenAction, road_spot))
             
             elif chosenAction == ACTIONS.SETTLE or chosenAction == ACTIONS.CITY:
@@ -606,10 +606,10 @@ class PlayerAgentHuman(PlayerAgent):
                     legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
 
                     print("Choose two roads to build:")
-                    edge1 = choose_edge(legal_edges, gameState, self.draw)
+                    edge1 = choose_edge(legal_edges, gameState.board, self.draw)
                     self.buildRoad((edge1.X, edge1.Y), gameState.board, gameState)
                     legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
-                    edge2 = choose_edge(legal_edges, gameState, self.draw)
+                    edge2 = choose_edge(legal_edges, gameState.board, self.draw)
 
                     return (0, (ACTIONS.PLAY_DEV_CARD, (DevCardTypes.ROAD_BUILDING, [(edge1.X, edge1.Y), (edge2.X, edge2.Y)])))
                 elif card_type == DevCardTypes.YEAR_OF_PLENTY:

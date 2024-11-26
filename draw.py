@@ -164,7 +164,7 @@ class Draw:
         circle_rect = circle_surface.get_rect(center=(center_x, center_y))
         self.screen.blit(circle_surface, circle_rect)
 
-def choose_edge(legal_edges, gameState, draw):
+def choose_edge(legal_edges, board, draw):
     print("Choose one road to build by clicking the GUI.")
     selected_spot = None
     threshold = 10  # Distance threshold for detecting clicks on roads
@@ -179,7 +179,7 @@ def choose_edge(legal_edges, gameState, draw):
                 if VERBOSE and DEBUG:
                     print(f"Clicked GUI at {x}, {y}")
                 for edge in legal_edges:
-                    start, end = gameState.board.getVertexEnds(edge)
+                    start, end = board.getVertexEnds(edge)
                     ox, oy = draw.calculateVertexPosition(start)
                     ex, ey = draw.calculateVertexPosition(end)
                     if DEBUG and VERBOSE:
