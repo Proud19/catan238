@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import Counter
 
-GRAPHICS = False
+GRAPHICS = True
 VERBOSE = True
 DEBUG = False
 AUTORUN = True
