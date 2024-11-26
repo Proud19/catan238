@@ -463,9 +463,9 @@ class PlayerAgent(object):
         return False
     
 class PlayerAgentExpectiminimax(PlayerAgent):
-    def __init__(self, name, agentIndex, color, depth=3, evalFn=defaultEvalFn):
+    def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn=defaultEvalFn):
         super(PlayerAgentExpectiminimax, self).__init__(name, agentIndex, color, depth=depth, evalFn=evalFn)
-        self.TIME_LIMIT = 5  # 5 seconds
+        self.TIME_LIMIT = 1  # 5 seconds
 
     def getAction(self, state):
         start_time = time.time()
