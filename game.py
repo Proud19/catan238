@@ -6,6 +6,8 @@ from collections import Counter
 from draw import Draw
 import time
 
+import argparse
+
 class GameState:
     def __init__(self, layout=BeginnerLayout):
         self.board = Board(layout)
@@ -176,20 +178,23 @@ class GameState:
 
 class Game:
     def __init__(self, playerAgentNums=None):
-        pygame.init()
-        self.screen_width = 1020
-        self.screen_height = 800
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        pygame.display.set_caption("Settlers of Catan")
-        self.clock = pygame.time.Clock()
+        if GRAPHICS: 
+            pygame.init()
+            self.screen_width = 1020
+            self.screen_height = 800
+            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+            pygame.display.set_caption("Settlers of Catan")
+            self.clock = pygame.time.Clock()
 
         self.moveHistory = []
         self.gameState = GameState()
         self.playerAgentNums = playerAgentNums 
         self.menu_state = "MAIN"  # Can be "MAIN", "GAME", or "WINNER"
         
-        self.load_images()
-        self.init_menu()
+        
+        if GRAPHICS: 
+            self.load_images()
+            self.init_menu()
 
         # Initialize game-specific variables
         self.currentAgentIndex = 0
@@ -273,7 +278,8 @@ class Game:
 
         playerTypes = {
             0: PlayerAgentRandom,
-            1: lambda name, index, color: PlayerAgentHuman(name, index, color)
+            1: lambda name, index, color: PlayerAgentHuman(name, index, color), 
+            2: lambda name, index, color: PlayerAgentExpectiminimax(name, index, color),
         }
 
         return playerTypes.get(playerCode, PlayerAgentRandom)(playerName, index, color)
@@ -323,7 +329,7 @@ class Game:
             agent = self.gameState.playerAgents[i]
             settleOne, settleTwo = playerSettlements
             agent.settlements.extend([settleOne, settleTwo])
-            roadOne = self.gameState.board.getRandomRoad(settleOne)
+            roadOne = self.gameState.board.getRandomRoad(settleOne) #TODO: These should not be random
             roadTwo = self.gameState.board.getRandomRoad(settleTwo)
             self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, roadOne))
             self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, roadTwo))
@@ -425,57 +431,65 @@ class Game:
             print("WELCOME TO SETTLERS OF CATAN!")
             print("-----------------------------")
 
-        # self.initializePlayers()
-        # self.initializeSettlementsAndResourcesLumberBrick()
 
+        self.initializePlayers()
+        self.initializeSettlementsAndResourcesLumberBrick()
         running = True
-        while running:
-            if self.menu_state == "MAIN":
-                self.draw_menu()
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        running = False
-                    elif event.type == pygame.MOUSEBUTTONDOWN:
-                        if self.start_button.collidepoint(event.pos):
-                            self.menu_state = "GAME"
-                            self.reset_game()
-                        elif self.quit_button.collidepoint(event.pos):
+
+        if GRAPHICS: 
+            while running:
+                if self.menu_state == "MAIN":
+                    self.draw_menu()
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
                             running = False
-
-            elif self.menu_state == "GAME":
-                if self.gameState.gameOver() >= 0:
-                    self.menu_state = "WINNER"
-                elif not AUTORUN:
-                    self.drawGame()
-                    waiting_for_input = True
-                    while waiting_for_input:
-                        for event in pygame.event.get():
-                            if event.type == pygame.QUIT:
+                        elif event.type == pygame.MOUSEBUTTONDOWN:
+                            if self.start_button.collidepoint(event.pos):
+                                self.menu_state = "GAME"
+                                self.reset_game()
+                            elif self.quit_button.collidepoint(event.pos):
                                 running = False
-                                waiting_for_input = False
-                            elif event.type == pygame.KEYDOWN:
-                                if event.key == pygame.K_RETURN:
+
+                elif self.menu_state == "GAME":
+                    if self.gameState.gameOver() >= 0:
+                        self.menu_state = "WINNER"
+                    elif not AUTORUN:
+                        self.drawGame()
+                        waiting_for_input = True
+                        while waiting_for_input:
+                            for event in pygame.event.get():
+                                if event.type == pygame.QUIT:
+                                    running = False
                                     waiting_for_input = False
-                                    self.run_game_turn()
-                        pygame.display.flip()
-                        self.clock.tick(60)
-                else:
-                    self.run_game_turn()
+                                elif event.type == pygame.KEYDOWN:
+                                    if event.key == pygame.K_RETURN:
+                                        waiting_for_input = False
+                                        self.run_game_turn()
+                            pygame.display.flip()
+                            self.clock.tick(60)
+                    else:
+                        self.run_game_turn()
 
-            elif self.menu_state == "WINNER":
-                self.draw_winner(self.gameState.gameOver())
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        running = False
-                    elif event.type == pygame.MOUSEBUTTONDOWN:
-                        if self.start_button.collidepoint(event.pos):
-                            self.menu_state = "MAIN"
-                            self.reset_game()
+                elif self.menu_state == "WINNER":
+                    self.draw_winner(self.gameState.gameOver())
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            running = False
+                        elif event.type == pygame.MOUSEBUTTONDOWN:
+                            if self.start_button.collidepoint(event.pos):
+                                self.menu_state = "MAIN"
+                                self.reset_game()
 
-            pygame.display.flip()
-            self.clock.tick(60)
+                pygame.display.flip()
+                self.clock.tick(60)
 
-        pygame.quit()
+            pygame.quit()
+        else: 
+            while running: 
+                if self.gameState.gameOver() >= 0: 
+                    running = False
+                    break
+                self.run_game_turn()
 
         winner = self.gameState.gameOver()
         if winner < 0:
@@ -556,6 +570,38 @@ class Game:
             print("Game reached turn limit without a winner.")
             self.menu_state = "WINNER"
 
+
+def run_simulations(n):
+    # setting suitable params to run simulations 
+    VERBOSE = False
+    GRAPHICS = False
+    DEBUG = False
+
+
+    playerAgentNums = [0, 2]  # This currently simulates random players
+    agentNames = ["random1", "random2"]
+    wins = [0, 0]
+
+    for _ in range(n): 
+        game = Game(playerAgentNums=playerAgentNums)
+        winnerIndex, _, _ = game.run()
+        if winnerIndex == 0 or winnerIndex == 1: 
+            wins[winnerIndex] += 1
+        print("The winner of this round is ", winnerIndex)
+
+    # Formatting the results nicely
+    print("\nSimulation Results:")
+    print("=" * 20)
+    print(f"{'Agent Name':<10} | {'Wins':<5}")
+    print("-" * 20)
+    for i, name in enumerate(agentNames):
+        print(f"{name:<10} | {wins[i]:<5}")
+    print("=" * 20)
+    print(f"Total Simulations: {n}")
+    
+        
+
+
 def getStringForPlayer(playerCode):
     playerTypes = {
         0: "Random Agent",
@@ -580,5 +626,29 @@ def getPlayerAgentSpecifications():
         return DEFAULT_PLAYER_ARRAY
 
 if __name__ == "__main__":
-    game = Game()
-    game.run()
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Run game simulations or a single game.")
+    parser.add_argument(
+        "-s", "--simulation-type",
+        type=str,
+        choices=["random"],  # Add more simulation types as needed
+        help="The type of simulation to run (e.g., 'random')."
+    )
+    parser.add_argument(
+        "-n", "--num-simulations",
+        type=int,
+        help="The number of simulations to run."
+    )
+
+    # Parse the command-line arguments
+    args = parser.parse_args()
+
+    # Conditional execution
+    if args.simulation_type and args.num_simulations:
+        # Run simulations if both arguments are provided
+        run_simulations(args.num_simulations)
+    else:
+        # Run a single game otherwise
+        print("\nRunning a single game...")
+        game = Game()
+        game.run()
