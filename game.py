@@ -244,7 +244,7 @@ class Game:
             self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
         self.initializePlayers()
         self.initializeSettlementsAndResourcesLumberBrick()
-        self.initializeBasedOnPlayerAgent()
+        # self.initializeBasedOnPlayerAgent()
 
         if VERBOSE and DEBUG:
             print("Player agent nums: ", self.playerAgentNums)
