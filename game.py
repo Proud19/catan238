@@ -244,6 +244,7 @@ class Game:
             self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
         self.initializePlayers()
         self.initializeSettlementsAndResourcesLumberBrick()
+        self.gameState.board.set_draw(self.draw)
         # self.initializeBasedOnPlayerAgent()
 
         if VERBOSE and DEBUG:
@@ -283,12 +284,14 @@ class Game:
         for i in range(NUM_PLAYERS):
             self.gameState.playerAgents[i] = self.createPlayer(self.playerAgentNums[i], i)
 
-    # def initializeBasedOnPlayerAgent(self):
-    #     # Player 0's goes first
-    #     if isinstance(self.gameState.playerAgents[0], PlayerAgentHuman):
-    #         print("Player 0 is a human")
-    #     elif isinstance(self.gameState.playerAgents[0], PlayerAgentRandom):
-    #         print("Player 0 random")
+    def initializeBasedOnPlayerAgent(self):
+        for i in [0,1,1,0]:
+            if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
+                vertex = self.gameState.board.getHumanVertexForSettlement()
+            elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom):
+                vertex = self.gameState.board.getRandomVertexForSettlement()
+            
+            self.gameState.board.applyAction(i, (ACTIONS.SETTLE, vertex))
 
     def initializeSettlementsAndResourcesLumberBrick(self):
         settlements = self.gameState.board.getRandomVerticesForSettlement()
@@ -398,8 +401,8 @@ class Game:
             print("WELCOME TO SETTLERS OF CATAN!")
             print("-----------------------------")
 
-        self.initializePlayers()
-        self.initializeSettlementsAndResourcesLumberBrick()
+        # self.initializePlayers()
+        # self.initializeSettlementsAndResourcesLumberBrick()
 
         running = True
         while running:
