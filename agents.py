@@ -6,6 +6,7 @@ import time
 from draw import choose_edge, choose_hex, choose_vertex
 import math
 from board import Edge
+import pygame
 
 def builderEvalFn(currentGameState, currentPlayerIndex):
     currentPlayer = currentGameState.playerAgents[currentPlayerIndex]

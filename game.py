@@ -243,9 +243,9 @@ class Game:
         if GRAPHICS:
             self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
         self.initializePlayers()
-        self.initializeSettlementsAndResourcesLumberBrick()
+        # self.initializeSettlementsAndResourcesLumberBrick()
         self.gameState.board.set_draw(self.draw)
-        # self.initializeBasedOnPlayerAgent()
+        self.initializeBasedOnPlayerAgent()
 
         if VERBOSE and DEBUG:
             print("Player agent nums: ", self.playerAgentNums)
@@ -285,6 +285,8 @@ class Game:
             self.gameState.playerAgents[i] = self.createPlayer(self.playerAgentNums[i], i)
 
     def initializeBasedOnPlayerAgent(self):
+        self.drawGame()
+        pygame.display.flip()
         for i in [0,1,1,0]:
             if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
                 vertex = self.gameState.board.getHumanVertexForSettlement()
@@ -292,6 +294,9 @@ class Game:
                 vertex = self.gameState.board.getRandomVertexForSettlement()
             
             self.gameState.board.applyAction(i, (ACTIONS.SETTLE, vertex))
+
+            self.drawGame()
+            pygame.display.flip()
 
     def initializeSettlementsAndResourcesLumberBrick(self):
         settlements = self.gameState.board.getRandomVerticesForSettlement()
