@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import Counter
 
-GRAPHICS = True
+GRAPHICS = False
 VERBOSE = True
 DEBUG = False
 AUTORUN = True
@@ -86,4 +86,4 @@ DEV_CARD_DECK = [DevCardTypes.KNIGHT] * 14 + [DevCardTypes.VICTORY_POINT] * 5 + 
 ResourceDict = {ResourceTypes.GRAIN:"G", ResourceTypes.WOOL:"W", ResourceTypes.ORE:"O", ResourceTypes.LUMBER:"L", ResourceTypes.BRICK:"B", ResourceTypes.NOTHING:"N"}
 NUM_PLAYERS = 2
 NUM_ITERATIONS = 4
-DEPTH = 3
+DEPTH = 2
