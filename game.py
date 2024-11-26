@@ -288,7 +288,8 @@ class Game:
         self.drawGame()
         pygame.display.flip()
         for i in [0,1,1,0]:
-            
+            agent = self.gameState.playerAgents[i]
+
             # Get settlement
             if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
                 vertex = self.gameState.board.getHumanVertexForSettlement()
@@ -296,6 +297,7 @@ class Game:
                 vertex = self.gameState.board.getRandomVertexForSettlement()
             
             self.gameState.board.applyAction(i, (ACTIONS.SETTLE, vertex))
+            agent.settlements.extend([vertex])
 
             self.drawGame()
             pygame.display.flip()
@@ -307,6 +309,7 @@ class Game:
                 road = self.gameState.board.getRandomRoad(vertex)
             
             self.gameState.board.applyAction(i, (ACTIONS.ROAD, road))
+            agent.roads.extend([road])
 
             self.drawGame()
             pygame.display.flip()
