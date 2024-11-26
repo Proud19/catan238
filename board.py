@@ -334,6 +334,10 @@ class Board:
                 vertex = None
         return vertex
 
+    def getHumanRoad(self, vertex):
+        possibleEdges = self.getEdgesOfVertex(vertex)
+        return choose_edge(possibleEdges, self.gameState, self.draw)
+
     def getRandomRoad(self, vertex):
         edges = self.getEdgesOfVertex(vertex)
         random.shuffle(edges)
