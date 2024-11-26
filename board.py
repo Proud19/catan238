@@ -1,6 +1,9 @@
 from enum import Enum
 import random
 from gameConstants import *
+import pygame
+from pygame.locals import *
+from draw import choose_vertex, choose_edge
 
 # # Possible actions a player can take
 # class Actions(Enum):
@@ -140,6 +143,7 @@ class Board:
         self.allRoads = []
         self.dieRollDict = {}
         self.resourceDict = {}
+        self.draw = None
 
         for i in range(self.numRows):
             for j in range(self.numCols):
@@ -184,6 +188,9 @@ class Board:
         self.tiles = [tile for row in self.visualBoard if row for tile in row if tile is not None]
 
         self.robber = Robber(self.get_desert_hex())
+
+    def set_draw(self, draw):
+        self.draw = draw
 
     def printData(self):
         print(self.hexagons)
@@ -308,6 +315,15 @@ class Board:
                 return vertex
         return None
 
+    def getHumanVertexForSettlement(self):
+        possibleVertices = []
+        for i in range(len(self.vertices)):
+            for j in range(len(self.vertices[i])):
+                if self.vertices[i][j] != None and self.vertices[i][j].canSettle:
+                    possibleVertices.append(self.vertices[i][j])
+        
+        return choose_vertex(possibleVertices, self.draw)
+
     def getRandomVertexForSettlement(self):
         vertex = None
         while vertex is None:
@@ -317,6 +333,10 @@ class Board:
             if vertex is not None and not vertex.canSettle:
                 vertex = None
         return vertex
+
+    def getHumanRoad(self, vertex):
+        possibleEdges = self.getEdgesOfVertex(vertex)
+        return choose_edge(possibleEdges, self, self.draw)
 
     def getRandomRoad(self, vertex):
         edges = self.getEdgesOfVertex(vertex)

@@ -3,11 +3,10 @@ import copy
 from gameConstants import *
 import random
 import time
-import pygame
-from pygame.locals import *
-import sys
+from draw import choose_edge, choose_hex, choose_vertex
 import math
 from board import Edge
+import pygame
 
 def builderEvalFn(currentGameState, currentPlayerIndex):
     currentPlayer = currentGameState.playerAgents[currentPlayerIndex]
@@ -113,6 +112,7 @@ class PlayerAgent(object):
         self.dev_cards = []
         self.played_knights = 0
         self.has_largest_army = False
+        self.dev_card_played_this_turn = False
 
     def __repr__(self):
         s = f"---------- {self.name} : {self.color} ----------\n"
@@ -443,6 +443,7 @@ class PlayerAgent(object):
         for card in self.dev_cards:
             if not card.has_been_used:
                 card.make_usable()
+        self.dev_card_played_this_turn = False
 
     def get_legal_road_spots(self, board):
         legal_spots = []
@@ -533,6 +534,10 @@ class PlayerAgentHuman(PlayerAgent):
 
     def getAction(self, gameState):
         possibleActions = gameState.getLegalActions(self.agentIndex)
+        print(possibleActions)
+        print(self.settlements)
+        print(self.roads)
+        print(self.canBuildRoad)
         if possibleActions:
 
             print(self.get_resources_as_string())
@@ -543,6 +548,9 @@ class PlayerAgentHuman(PlayerAgent):
                 if action[0] not in action_map:
                     action_map[action[0]] = []
                 action_map[action[0]].append(action[1])
+
+            if self.dev_card_played_this_turn and ACTIONS.PLAY_DEV_CARD in action_map:
+                del action_map[ACTIONS.PLAY_DEV_CARD]
 
             index_map = {}
             for i, action in enumerate(action_map):
@@ -559,11 +567,11 @@ class PlayerAgentHuman(PlayerAgent):
                 print(f"Chose action: {chosenAction}")
 
             if chosenAction == ACTIONS.ROAD:
-                road_spot = self.choose_road_spot(action_map[chosenAction], gameState)
+                road_spot = choose_edge(action_map[chosenAction], gameState.board, self.draw)
                 return (0, (chosenAction, road_spot))
             
             elif chosenAction == ACTIONS.SETTLE or chosenAction == ACTIONS.CITY:
-                spot = self.choose_spot(action_map[chosenAction], chosenAction)
+                spot = choose_vertex(action_map[chosenAction], self.draw, chosenAction)
                 return (0, (chosenAction, spot))
             
             elif chosenAction == ACTIONS.TRADE:
@@ -588,6 +596,7 @@ class PlayerAgentHuman(PlayerAgent):
                     if card_type not in possible_cards:
                         possible_cards.append(card_type)
                         print(f"{j}: {card_type.name.capitalize()}")
+                        j += 1
                 
                 card_index = int(input("Enter the number of the card you want to play: ")) - 1
                 while card_index < 0 or card_index >= len(possible_cards):
@@ -606,10 +615,10 @@ class PlayerAgentHuman(PlayerAgent):
                     legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
 
                     print("Choose two roads to build:")
-                    edge1 = self.choose_road_spot(legal_edges, gameState)
+                    edge1 = choose_edge(legal_edges, gameState.board, self.draw)
                     self.buildRoad((edge1.X, edge1.Y), gameState.board, gameState)
                     legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
-                    edge2 = self.choose_road_spot(legal_edges, gameState)
+                    edge2 = choose_edge(legal_edges, gameState.board, self.draw)
 
                     return (0, (ACTIONS.PLAY_DEV_CARD, (DevCardTypes.ROAD_BUILDING, [(edge1.X, edge1.Y), (edge2.X, edge2.Y)])))
                 elif card_type == DevCardTypes.YEAR_OF_PLENTY:
@@ -658,7 +667,7 @@ class PlayerAgentHuman(PlayerAgent):
     def choose_robber_placement(self, board):
         print("Choose robber location on the GUI.")
         valid_hexes = board.get_valid_robber_hexes()
-        return self.choose_robber_loc(valid_hexes)
+        return choose_hex(valid_hexes, self.draw)
     
     def discard_half_on_seven(self, gameState):
         total_count = sum(self.resources.values())
@@ -976,4 +985,5 @@ class PlayerAgentExpectiminimax(PlayerAgent):
             if sum(discarded.values()) == discard_count:
                 break
         
+
         return discarded
