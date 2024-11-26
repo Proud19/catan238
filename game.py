@@ -314,6 +314,9 @@ class Game:
             self.drawGame()
             pygame.display.flip()
 
+        for i in range(2):
+            self.gameState.playerAgents[i].collectInitialResources(self.gameState.board)
+
     def initializeSettlementsAndResourcesLumberBrick(self):
         settlements = self.gameState.board.getRandomVerticesForSettlement()
         for i, playerSettlements in enumerate(settlements):
