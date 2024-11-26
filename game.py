@@ -248,8 +248,9 @@ class Game:
         if GRAPHICS:
             self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
         self.initializePlayers()
-        self.initializeSettlementsAndResourcesLumberBrick()
-        # self.initializeBasedOnPlayerAgent()
+        # self.initializeSettlementsAndResourcesLumberBrick()
+        self.gameState.board.set_draw(self.draw)
+        self.initializeBasedOnPlayerAgent()
 
         if VERBOSE and DEBUG:
             print("Player agent nums: ", self.playerAgentNums)
@@ -289,12 +290,35 @@ class Game:
         for i in range(NUM_PLAYERS):
             self.gameState.playerAgents[i] = self.createPlayer(self.playerAgentNums[i], i)
 
-    # def initializeBasedOnPlayerAgent(self):
-    #     # Player 0's goes first
-    #     if isinstance(self.gameState.playerAgents[0], PlayerAgentHuman):
-    #         print("Player 0 is a human")
-    #     elif isinstance(self.gameState.playerAgents[0], PlayerAgentRandom):
-    #         print("Player 0 random")
+    def initializeBasedOnPlayerAgent(self):
+        self.drawGame()
+        pygame.display.flip()
+        for i in [0,1,1,0]:
+            agent = self.gameState.playerAgents[i]
+
+            # Get settlement
+            if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
+                vertex = self.gameState.board.getHumanVertexForSettlement()
+            elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom):
+                vertex = self.gameState.board.getRandomVertexForSettlement()
+            
+            self.gameState.board.applyAction(i, (ACTIONS.SETTLE, vertex))
+            agent.settlements.extend([vertex])
+
+            self.drawGame()
+            pygame.display.flip()
+
+            # Get connected road
+            if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
+                road = self.gameState.board.getHumanRoad(vertex)
+            elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom):
+                road = self.gameState.board.getRandomRoad(vertex)
+            
+            self.gameState.board.applyAction(i, (ACTIONS.ROAD, road))
+            agent.roads.extend([road])
+
+            self.drawGame()
+            pygame.display.flip()
 
     def initializeSettlementsAndResourcesLumberBrick(self):
         settlements = self.gameState.board.getRandomVerticesForSettlement()
@@ -403,6 +427,7 @@ class Game:
         if VERBOSE:
             print("WELCOME TO SETTLERS OF CATAN!")
             print("-----------------------------")
+
 
         self.initializePlayers()
         self.initializeSettlementsAndResourcesLumberBrick()

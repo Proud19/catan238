@@ -1,5 +1,8 @@
 import pygame
-from gameConstants import getColorForPlayer, DEBUG, VERBOSE, ResourceTypes
+from gameConstants import getColorForPlayer, DEBUG, VERBOSE, ResourceTypes, ACTIONS
+from pygame.locals import *
+import math
+import sys
 
 class Draw:
     def __init__(self, tiles, screen, board):
@@ -160,3 +163,93 @@ class Draw:
 
         circle_rect = circle_surface.get_rect(center=(center_x, center_y))
         self.screen.blit(circle_surface, circle_rect)
+
+def choose_edge(legal_edges, board, draw):
+    print("Choose one road to build by clicking the GUI.")
+    selected_spot = None
+    threshold = 10  # Distance threshold for detecting clicks on roads
+
+    while selected_spot is None:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == MOUSEBUTTONDOWN:
+                x, y = event.pos
+                if VERBOSE and DEBUG:
+                    print(f"Clicked GUI at {x}, {y}")
+                for edge in legal_edges:
+                    start, end = board.getVertexEnds(edge)
+                    ox, oy = draw.calculateVertexPosition(start)
+                    ex, ey = draw.calculateVertexPosition(end)
+                    if DEBUG and VERBOSE:
+                        print("Args: ")
+                        print(x, y, ox, oy, ex, ey)
+                    dist = point_to_line_distance(x, y, ox, oy, ex, ey)
+                    if dist < threshold:
+                        selected_edge = edge
+                        if VERBOSE and DEBUG:
+                            print(f"Selected edge: {edge}")
+                        return selected_edge
+
+def choose_vertex(legal_vertices, draw, action=ACTIONS.SETTLE):
+    if action.name == "CITY":
+        print("Choose one city to build by clicking the GUI.")
+    elif action.name == "SETTLE":
+        print("Choose one settlement to build by clicking the GUI.")
+    
+    selected_vertex = None
+    threshold = 10  # Distance threshold
+
+    while selected_vertex is None:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == MOUSEBUTTONDOWN:
+                x, y = event.pos
+                for vertex in legal_vertices:
+                    xPos, yPos = draw.calculateVertexPosition(vertex)
+                    dist = point_to_point_distance(x, y, xPos, yPos)
+                    if dist < threshold:
+                        selected_vertex = vertex
+                        if VERBOSE and DEBUG:
+                            print(f"Selected vertex: {vertex}")
+                        return selected_vertex
+    
+def choose_hex(legal_hexes, draw):
+    selected_hex = None
+    threshold = 10  # Distance threshold for detecting clicks on roads
+
+    while selected_hex is None:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == MOUSEBUTTONDOWN:
+                x, y = event.pos
+                for hex in legal_hexes:
+                    xPos, yPos = draw.hex_centers[hex]
+
+                    dist = point_to_point_distance(x, y, xPos, yPos)
+                    if dist < threshold:
+                        selected_hex = hex
+                        if VERBOSE and DEBUG:
+                            print(f"Selected hex: {hex}")
+                        return hex
+
+def point_to_line_distance(px, py, x1, y1, x2, y2):
+    # Calculate the distance from point (px, py) to the line segment (x1, y1) - (x2, y2)
+    line_mag = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    if line_mag < 1e-6:
+        return math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
+
+    u = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / (line_mag ** 2)
+    u = max(min(u, 1), 0)
+    ix = x1 + u * (x2 - x1)
+    iy = y1 + u * (y2 - y1)
+    return math.sqrt((px - ix) ** 2 + (py - iy) ** 2)
+
+def point_to_point_distance(x1, y1, x2, y2):
+    # Calculate the distance from point (x1, y1) to point (x2, y2)
+    return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
