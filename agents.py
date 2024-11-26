@@ -3,9 +3,7 @@ import copy
 from gameConstants import *
 import random
 import time
-import pygame
-from pygame.locals import *
-import sys
+from draw import choose_edge, choose_hex, choose_vertex
 import math
 from board import Edge
 
@@ -559,11 +557,11 @@ class PlayerAgentHuman(PlayerAgent):
                 print(f"Chose action: {chosenAction}")
 
             if chosenAction == ACTIONS.ROAD:
-                road_spot = self.choose_road_spot(action_map[chosenAction], gameState)
+                road_spot = choose_edge(action_map[chosenAction], gameState, self.draw)
                 return (0, (chosenAction, road_spot))
             
             elif chosenAction == ACTIONS.SETTLE or chosenAction == ACTIONS.CITY:
-                spot = self.choose_spot(action_map[chosenAction], chosenAction)
+                spot = choose_vertex(action_map[chosenAction], self.draw, chosenAction)
                 return (0, (chosenAction, spot))
             
             elif chosenAction == ACTIONS.TRADE:
@@ -607,10 +605,10 @@ class PlayerAgentHuman(PlayerAgent):
                     legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
 
                     print("Choose two roads to build:")
-                    edge1 = self.choose_road_spot(legal_edges, gameState)
+                    edge1 = choose_edge(legal_edges, gameState, self.draw)
                     self.buildRoad((edge1.X, edge1.Y), gameState.board, gameState)
                     legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
-                    edge2 = self.choose_road_spot(legal_edges, gameState)
+                    edge2 = choose_edge(legal_edges, gameState, self.draw)
 
                     return (0, (ACTIONS.PLAY_DEV_CARD, (DevCardTypes.ROAD_BUILDING, [(edge1.X, edge1.Y), (edge2.X, edge2.Y)])))
                 elif card_type == DevCardTypes.YEAR_OF_PLENTY:
@@ -659,7 +657,7 @@ class PlayerAgentHuman(PlayerAgent):
     def choose_robber_placement(self, board):
         print("Choose robber location on the GUI.")
         valid_hexes = board.get_valid_robber_hexes()
-        return self.choose_robber_loc(valid_hexes)
+        return choose_hex(valid_hexes, self.draw)
     
     def discard_half_on_seven(self, gameState):
         total_count = sum(self.resources.values())
@@ -693,96 +691,3 @@ class PlayerAgentHuman(PlayerAgent):
 
         gameState.bank += discarded
         return discarded
-    
-    def choose_road_spot(self, legal_edges, gameState):
-        print("Choose one road to build by clicking the GUI.")
-        selected_spot = None
-        threshold = 10  # Distance threshold for detecting clicks on roads
-
-        while selected_spot is None:
-            for event in pygame.event.get():
-                if event.type == QUIT:
-                    pygame.quit()
-                    sys.exit()
-                elif event.type == MOUSEBUTTONDOWN:
-                    x, y = event.pos
-                    if VERBOSE and DEBUG:
-                        print(f"Clicked GUI at {x}, {y}")
-                    for edge in legal_edges:
-                        start, end = gameState.board.getVertexEnds(edge)
-                        ox, oy = self.draw.calculateVertexPosition(start)
-                        ex, ey = self.draw.calculateVertexPosition(end)
-                        if DEBUG and VERBOSE:
-                            print("Args: ")
-                            print(x, y, ox, oy, ex, ey)
-                        dist = point_to_line_distance(x, y, ox, oy, ex, ey)
-                        if dist < threshold:
-                            selected_edge = edge
-                            if VERBOSE and DEBUG:
-                                print(f"Selected edge: {edge}")
-                            return selected_edge
-
-
-    def choose_spot(self, legal_vertices, action):
-        if action.name == "CITY":
-            print("Choose one city to build by clicking the GUI.")
-        elif action.name == "SETTLE":
-            print("Choose one settlement to build by clicking the GUI.")
-        else:
-            print("Error")
-    
-        selected_vertex = None
-        threshold = 10  # Distance threshold for detecting clicks on roads
-
-        while selected_vertex is None:
-            for event in pygame.event.get():
-                if event.type == QUIT:
-                    pygame.quit()
-                    sys.exit()
-                elif event.type == MOUSEBUTTONDOWN:
-                    x, y = event.pos
-                    for vertex in legal_vertices:
-                        xPos, yPos = self.draw.calculateVertexPosition(vertex)
-                        dist = point_to_point_distance(x, y, xPos, yPos)
-                        if dist < threshold:
-                            selected_vertex = vertex
-                            if VERBOSE and DEBUG:
-                                print(f"Selected vertex: {vertex}")
-                            return selected_vertex
-    
-    def choose_robber_loc(self, legal_hexes):
-        selected_hex = None
-        threshold = 10  # Distance threshold for detecting clicks on roads
-
-        while selected_hex is None:
-            for event in pygame.event.get():
-                if event.type == QUIT:
-                    pygame.quit()
-                    sys.exit()
-                elif event.type == MOUSEBUTTONDOWN:
-                    x, y = event.pos
-                    for hex in legal_hexes:
-                        xPos, yPos = self.draw.hex_centers[hex]
-
-                        dist = point_to_point_distance(x, y, xPos, yPos)
-                        if dist < threshold:
-                            selected_hex = hex
-                            if VERBOSE and DEBUG:
-                                print(f"Selected hex: {hex}")
-                            return hex
-
-def point_to_line_distance(px, py, x1, y1, x2, y2):
-    # Calculate the distance from point (px, py) to the line segment (x1, y1) - (x2, y2)
-    line_mag = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-    if line_mag < 1e-6:
-        return math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
-
-    u = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / (line_mag ** 2)
-    u = max(min(u, 1), 0)
-    ix = x1 + u * (x2 - x1)
-    iy = y1 + u * (y2 - y1)
-    return math.sqrt((px - ix) ** 2 + (py - iy) ** 2)
-
-def point_to_point_distance(x1, y1, x2, y2):
-    # Calculate the distance from point (x1, y1) to point (x2, y2)
-    return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
