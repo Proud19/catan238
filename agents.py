@@ -72,6 +72,7 @@ class DevCard:
     def use(self):
         if self.can_be_used and not self.has_been_used:
             self.has_been_used = True
+            self.can_be_used = False
             return True
         return False
     
@@ -245,9 +246,11 @@ class PlayerAgent(object):
                 self.dev_cards.append(new_card)
                 if card == DevCardTypes.VICTORY_POINT:
                     self.victoryPoints += 1
-                print(f"Player {self.agentIndex} bought a development card: {card}")
+                if VERBOSE: 
+                    print(f"Player {self.agentIndex}  bought a development card: {card}")
             else:
-                print(f"No development cards left in the deck.")
+                if VERBOSE:
+                    print(f"No development cards left in the deck.")
 
         elif action[0] is ACTIONS.PLAY_DEV_CARD:
             card_type, card_action = action[1]
@@ -290,9 +293,11 @@ class PlayerAgent(object):
                         total_stolen += amount
                 if VERBOSE:
                     if total_stolen > 0:
-                        print(f"{self.name} used Monopoly and collected {total_stolen} {resource.name}")
+                        if VERBOSE: 
+                            print(f"{self.name} used Monopoly and collected {total_stolen} {resource.name}")
                     else:
-                        print(f"{self.name} used Monopoly on {resource.name}, but no resources were collected")
+                        if VERBOSE:
+                            print(f"{self.name} used Monopoly on {resource.name}, but no resources were collected")
             elif card_type == DevCardTypes.VICTORY_POINT:
                 self.victoryPoints += 1
 
@@ -780,3 +785,195 @@ def point_to_line_distance(px, py, x1, y1, x2, y2):
 def point_to_point_distance(x1, y1, x2, y2):
     # Calculate the distance from point (x1, y1) to point (x2, y2)
     return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+
+
+class PlayerAgentExpectimax(PlayerAgent):
+    def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn=defaultEvalFn):
+        super(PlayerAgentExpectimax, self).__init__(name, agentIndex, color, depth, evalFn=evalFn)
+        self.TIME_LIMIT = 5  # 5 seconds
+
+    def getAction(self, state):
+        start_time = time.time()
+
+        def recurse(currState, currDepth, playerIndex):
+            if time.time() - start_time > self.TIME_LIMIT:
+                return None, None  # Timeout
+
+            if currState.gameOver() == playerIndex:
+                return float('inf'), None
+            elif currState.gameOver() > -1:
+                return float('-inf'), None
+            elif currDepth >= self.depth:
+                return self.evaluationFunction(currState, self.agentIndex), None
+
+            possibleActions = self.filterActions(currState.getLegalActions(playerIndex))
+
+            if len(possibleActions) == 0:
+                return self.evaluationFunction(currState, self.agentIndex), None
+
+            rollProbabilities = currState.diceAgent.getRollDistribution()
+            newDepth = currDepth + 1
+            newPlayerIndex = (playerIndex + 1) % currState.getNumPlayerAgents()
+
+            if playerIndex == self.agentIndex:
+                bestValue = float('-inf')
+                bestAction = None
+                for currAction in possibleActions:
+                    if currAction[0] == ACTIONS.PASS:
+                        currVal = self.evaluationFunction(currState, self.agentIndex)
+                    else:
+                        currVal = 0
+                        for roll, probability in rollProbabilities:
+                            successor = currState.generateSuccessor(playerIndex, currAction)
+                            successor.updatePlayerResourcesForDiceRoll(roll)
+                            value, _ = recurse(successor, newDepth, playerIndex)
+                            if value is None:  # Timeout
+                                return None, None
+                            currVal += probability * value
+                    if currVal > bestValue:
+                        bestValue = currVal
+                        bestAction = currAction
+                    if currAction[0] == ACTIONS.PASS:
+                        break  # If PASS is the best action, no need to check further
+                return bestValue, bestAction
+            else:
+                totalValue = 0
+                count = 0
+                for currAction in possibleActions:
+                    if currAction[0] == ACTIONS.PASS:
+                        currVal = self.evaluationFunction(currState, self.agentIndex)
+                    else:
+                        currVal = 0
+                        for roll, probability in rollProbabilities:
+                            successor = currState.generateSuccessor(playerIndex, currAction)
+                            successor.updatePlayerResourcesForDiceRoll(roll)
+                            value, _ = recurse(successor, newDepth, playerIndex)
+                            if value is None:  # Timeout
+                                return None, None
+                            currVal += probability * value
+                    totalValue += currVal
+                    count += 1
+                    if currAction[0] == ACTIONS.PASS:
+                        break  # If PASS is an option, no need to check further
+                return totalValue / count if count > 0 else 0, None
+
+        value, action = recurse(state, 0, self.agentIndex)
+        if value is None or action is None:
+            # If we've timed out, just return PASS
+            return 0, (ACTIONS.PASS, None)
+        return value, action
+
+    def filterActions(self, actions):
+        filtered_actions = actions + [(ACTIONS.PASS, None)]
+        return filtered_actions
+    
+    def discard_half_on_seven(self, gameState):
+        return super().discard_half_on_seven(gameState)
+    
+
+
+class PlayerAgentExpectiminimax(PlayerAgent):
+    def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn=defaultEvalFn):
+        super(PlayerAgentExpectiminimax, self).__init__(name, agentIndex, color, depth=depth, evalFn=evalFn)
+        self.TIME_LIMIT = 1  # 5 seconds
+
+    def getAction(self, state):
+        start_time = time.time()
+
+        def recurse(currState, currDepth, playerIndex):
+            if time.time() - start_time > self.TIME_LIMIT:
+                return None, None  # Timeout
+
+            if currState.gameOver() == playerIndex:
+                return float('inf'), None
+            elif currState.gameOver() > -1:
+                return float('-inf'), None
+            elif currDepth >= self.depth:
+                return self.evaluationFunction(currState, self.agentIndex), None
+
+            possibleActions = self.filterActions(currState.getLegalActions(playerIndex))
+
+            if len(possibleActions) == 0:
+                return self.evaluationFunction(currState, self.agentIndex), None
+
+            rollProbabilities = currState.diceAgent.getRollDistribution()
+            newDepth = currDepth + 1
+            newPlayerIndex = (playerIndex + 1) % currState.getNumPlayerAgents()
+
+            if playerIndex == self.agentIndex:
+                bestValue = float('-inf')
+                bestAction = None
+                for currAction in possibleActions:
+                    if currAction[0] == ACTIONS.PASS:
+                        currVal = self.evaluationFunction(currState, self.agentIndex)
+                    else:
+                        currVal = 0
+                        for roll, probability in rollProbabilities:
+                            successor = currState.generateSuccessor(playerIndex, currAction)
+                            successor.updatePlayerResourcesForDiceRoll(roll)
+                            value, _ = recurse(successor, newDepth, playerIndex)  # Continue with same player
+                            if value is None:  # Timeout
+                                return None, None
+                            currVal += probability * value
+                    if currVal > bestValue:
+                        bestValue = currVal
+                        bestAction = currAction
+                    if currAction[0] == ACTIONS.PASS:
+                        break  # If PASS is the best action, no need to check further
+                return bestValue, bestAction
+            else:
+                worstValue = float('inf')
+                worstAction = None
+                for currAction in possibleActions:
+                    if currAction[0] == ACTIONS.PASS:
+                        currVal = self.evaluationFunction(currState, self.agentIndex)
+                    else:
+                        currVal = 0
+                        for roll, probability in rollProbabilities:
+                            successor = currState.generateSuccessor(playerIndex, currAction)
+                            successor.updatePlayerResourcesForDiceRoll(roll)
+                            value, _ = recurse(successor, newDepth, playerIndex)  # Continue with same player
+                            if value is None:  # Timeout
+                                return None, None
+                            currVal += probability * value
+                    if currVal < worstValue:
+                        worstValue = currVal
+                        worstAction = currAction
+                    if currAction[0] == ACTIONS.PASS:
+                        break  # If PASS is the worst action, no need to check further
+                return worstValue, worstAction
+
+        value, action = recurse(state, 0, self.agentIndex)
+        if value is None or action is None:
+            # If we've timed out, just return PASS
+            return 0, (ACTIONS.PASS, None)
+        return value, action
+
+    def filterActions(self, actions):
+        filtered_actions = actions + [(ACTIONS.PASS, None)]
+        return filtered_actions
+    
+    def discard_half_on_seven(self, gameState):
+        total_resources = sum(self.resources.values())
+        if total_resources <= 7:
+            return None
+
+        discard_count = total_resources // 2
+        discarded = self.choose_cards_to_discard(discard_count)
+        self.resources -= discarded
+        gameState.bank += discarded  # Add discarded resources back to the bank
+        return discarded
+
+    def choose_cards_to_discard(self, discard_count):
+        discarded = Counter()
+        resources_list = sorted(self.resources.items(), key=lambda x: x[1], reverse=True)
+        
+        for resource, count in resources_list:
+            while count > 0 and sum(discarded.values()) < discard_count:
+                discarded[resource] += 1
+                count -= 1
+            
+            if sum(discarded.values()) == discard_count:
+                break
+        
+        return discarded

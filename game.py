@@ -6,7 +6,6 @@ from collections import Counter
 from draw import Draw
 import time
 
-
 import argparse
 
 class GameState:
@@ -278,7 +277,8 @@ class Game:
 
         playerTypes = {
             0: PlayerAgentRandom,
-            1: lambda name, index, color: PlayerAgentHuman(name, index, color)
+            1: lambda name, index, color: PlayerAgentHuman(name, index, color), 
+            2: lambda name, index, color: PlayerAgentExpectiminimax(name, index, color),
         }
 
         return playerTypes.get(playerCode, PlayerAgentRandom)(playerName, index, color)
@@ -302,7 +302,7 @@ class Game:
             agent = self.gameState.playerAgents[i]
             settleOne, settleTwo = playerSettlements
             agent.settlements.extend([settleOne, settleTwo])
-            roadOne = self.gameState.board.getRandomRoad(settleOne)
+            roadOne = self.gameState.board.getRandomRoad(settleOne) #TODO: These should not be random
             roadTwo = self.gameState.board.getRandomRoad(settleTwo)
             self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, roadOne))
             self.gameState.board.applyAction(agent.agentIndex, (ACTIONS.ROAD, roadTwo))
@@ -550,7 +550,7 @@ def run_simulations(n):
     DEBUG = False
 
 
-    playerAgentNums = [0, 0]  # This currently simulates random players
+    playerAgentNums = [0, 2]  # This currently simulates random players
     agentNames = ["random1", "random2"]
     wins = [0, 0]
 
