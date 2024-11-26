@@ -288,12 +288,25 @@ class Game:
         self.drawGame()
         pygame.display.flip()
         for i in [0,1,1,0]:
+            
+            # Get settlement
             if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
                 vertex = self.gameState.board.getHumanVertexForSettlement()
             elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom):
                 vertex = self.gameState.board.getRandomVertexForSettlement()
             
             self.gameState.board.applyAction(i, (ACTIONS.SETTLE, vertex))
+
+            self.drawGame()
+            pygame.display.flip()
+
+            # Get connected road
+            if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
+                road = self.gameState.board.getHumanRoad(vertex)
+            elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom):
+                road = self.gameState.board.getRandomRoad(vertex)
+            
+            self.gameState.board.applyAction(i, (ACTIONS.ROAD, road))
 
             self.drawGame()
             pygame.display.flip()
