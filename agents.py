@@ -530,6 +530,9 @@ class PlayerAgentHuman(PlayerAgent):
     def getAction(self, gameState):
         possibleActions = gameState.getLegalActions(self.agentIndex)
         print(possibleActions)
+        print(self.settlements)
+        print(self.roads)
+        print(self.canBuildRoad)
         if possibleActions:
 
             print(self.get_resources_as_string())
