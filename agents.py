@@ -539,6 +539,9 @@ class PlayerAgentHuman(PlayerAgent):
                     action_map[action[0]] = []
                 action_map[action[0]].append(action[1])
 
+            if not self.canPlayDevCard() and ACTIONS.PLAY_DEV_CARD in action_map:
+                del action_map[ACTIONS.PLAY_DEV_CARD]
+
             index_map = {}
             for i, action in enumerate(action_map):
                 index_map[i] = action
@@ -583,6 +586,7 @@ class PlayerAgentHuman(PlayerAgent):
                     if card_type not in possible_cards:
                         possible_cards.append(card_type)
                         print(f"{j}: {card_type.name.capitalize()}")
+                        j += 1
                 
                 card_index = int(input("Enter the number of the card you want to play: ")) - 1
                 while card_index < 0 or card_index >= len(possible_cards):
