@@ -112,6 +112,7 @@ class PlayerAgent(object):
         self.dev_cards = []
         self.played_knights = 0
         self.has_largest_army = False
+        self.dev_card_played_this_turn = False
 
     def __repr__(self):
         s = f"---------- {self.name} : {self.color} ----------\n"
@@ -438,6 +439,7 @@ class PlayerAgent(object):
         for card in self.dev_cards:
             if not card.has_been_used:
                 card.make_usable()
+        self.dev_card_played_this_turn = False
 
     def get_legal_road_spots(self, board):
         legal_spots = []
@@ -539,7 +541,7 @@ class PlayerAgentHuman(PlayerAgent):
                     action_map[action[0]] = []
                 action_map[action[0]].append(action[1])
 
-            if not self.canPlayDevCard() and ACTIONS.PLAY_DEV_CARD in action_map:
+            if self.dev_card_played_this_turn and ACTIONS.PLAY_DEV_CARD in action_map:
                 del action_map[ACTIONS.PLAY_DEV_CARD]
 
             index_map = {}
