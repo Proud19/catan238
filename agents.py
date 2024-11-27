@@ -74,6 +74,12 @@ class DevCard:
             self.can_be_used = False
             return True
         return False
+
+    def deepCopy(self):
+        newCard = DevCard(self.type)
+        newCard.can_be_used = self.can_be_used
+        newCard.has_been_used = self.has_been_used
+        return newCard
     
     def __repr__(self):
         status = "Used" if self.has_been_used else "Usable" if self.can_be_used else "Not Usable"
@@ -175,6 +181,7 @@ class PlayerAgent(object):
         newCopy.cities = [board.getVertex(city.X, city.Y) for city in self.cities]
         newCopy.hasLongestRoad = self.hasLongestRoad
         newCopy.longestRoadLength = self.longestRoadLength
+        newCopy.dev_cards = [copy.deepcopy(card) for card in self.dev_cards]
         return newCopy
 
     def applyAction(self, action, board, gameState):
@@ -271,7 +278,7 @@ class PlayerAgent(object):
                     if self.numRoads < MAX_ROADS:  # Change to < instead of <=
                         if self.buildRoad(road_coords, board, gameState):
                             roads_built.append(road_coords)
-                            edge = board.getEdge(road_coords[0], road_coords[1])
+                            edge = board.getEdge(road_coords.X, road_coords.Y)
                             board.allRoads.append(edge)
                             self.numRoads += 1
                     else:
@@ -287,6 +294,8 @@ class PlayerAgent(object):
                 total_stolen = 0
                 for player in gameState.playerAgents:
                     if player != self:
+                        if resource not in player.resources:
+                            continue
                         amount = player.resources[resource]
                         player.resources[resource] = 0
                         self.resources[resource] += amount
@@ -458,9 +467,9 @@ class PlayerAgent(object):
 
     def buildRoad(self, road_coords, board, gameState):
         if self.numRoads < MAX_ROADS:  # Change to < instead of <=
-            edge = board.getEdge(road_coords[0], road_coords[1])
+            edge = board.getEdge(road_coords.X, road_coords.Y)
             if edge and not edge.isOccupied():
-                if board.canBuildRoadAt(self.agentIndex, road_coords[0], road_coords[1]):
+                if board.canBuildRoadAt(self.agentIndex, road_coords.X, road_coords.Y):
                     edge.build(self.agentIndex)
                     self.roads.append(edge)
                     board.allRoads.append(edge)

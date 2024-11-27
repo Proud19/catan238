@@ -23,6 +23,7 @@ class GameState:
         copy.board = self.board.deepCopy()
         copy.playerAgents = [playerAgent.deepCopy(copy.board) for playerAgent in self.playerAgents]
         return copy
+    
 
     def getLegalActions(self, agentIndex):
         legalActions = []
@@ -56,14 +57,33 @@ class GameState:
 
         if agent.canBuyDevCard(self):
             legalActions.append((ACTIONS.BUY_DEV_CARD, None))
-
         for card in agent.dev_cards:
             if card.can_be_used and not card.has_been_used:
                 if card.type == DevCardTypes.KNIGHT:
                     for hex in self.board.get_valid_robber_hexes():
-                        legalActions.append((ACTIONS.PLAY_DEV_CARD, (DevCardTypes.KNIGHT, hex)))
-                elif card.type in [DevCardTypes.ROAD_BUILDING, DevCardTypes.YEAR_OF_PLENTY, DevCardTypes.MONOPOLY]:
-                    legalActions.append((ACTIONS.PLAY_DEV_CARD, card.type))
+                        legalActions.append((ACTIONS.PLAY_DEV_CARD, (card.type, hex)))
+                elif card.type == DevCardTypes.ROAD_BUILDING: 
+                    for road in agent.roads:
+                        vertices = self.board.getVertexEnds(road)
+                        for vertex in vertices:
+                            edges = self.board.getEdgesOfVertex(vertex)
+                            for edge in edges:
+                                if not edge.isOccupied():
+                                    legalActions.append((ACTIONS.PLAY_DEV_CARD, (card.type, [edge]))) 
+                                    #TODO: Should be able to build more than one road but limiting to one for now 
+                                    """
+                                    Consider doing: 
+                                    print("Choose two roads to build:")
+                                    edge1 = choose_edge(legal_edges, gameState.board, self.draw)
+                                    self.buildRoad((edge1.X, edge1.Y), gameState.board, gameState)
+                                    legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
+                                    edge2 = choose_edge(legal_edges, gameState.board, self.draw)
+                                    """
+                elif card.type == DevCardTypes.YEAR_OF_PLENTY: 
+                    legalActions.append((ACTIONS.PLAY_DEV_CARD, (card.type, [ResourceTypes.GRAIN, ResourceTypes.LUMBER])))
+                elif card.type == DevCardTypes.MONOPOLY: 
+                    legalActions.append((ACTIONS.PLAY_DEV_CARD, (card.type, ResourceTypes.GRAIN)))
+            
 
         legalActions.append((ACTIONS.PASS, None))
 
@@ -74,7 +94,7 @@ class GameState:
             raise Exception("Can't generate a successor of a terminal state!")
 
         copy = self.deepCopy()
-        copy.playerAgents[playerIndex].applyAction(action, copy.board, copy)
+        # copy.playerAgents[playerIndex].applyAction(action, copy.board, copy)
         copy.board.applyAction(playerIndex, action)
         return copy
 

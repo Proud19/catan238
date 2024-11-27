@@ -4,6 +4,7 @@ from gameConstants import *
 import pygame
 from pygame.locals import *
 from draw import choose_vertex, choose_edge
+import copy
 
 # # Possible actions a player can take
 # class Actions(Enum):
@@ -198,13 +199,14 @@ class Board:
         print(self.vertices)
 
     def deepCopy(self):
-        copy = Board(self.layout)
-        copy.hexagons = [[h.deepCopy() if h is not None else None for h in row] for row in self.hexagons]
-        copy.edges = [[e.deepCopy() if e is not None else None for e in row] for row in self.edges]
-        copy.vertices = [[v.deepCopy() if v is not None else None for v in row] for row in self.vertices]
-        copy.allSettlements = [s.deepCopy() for s in self.allSettlements]
-        copy.allRoads = [r.deepCopy() for r in self.allRoads]
-        return copy
+        _copy = Board(self.layout)
+        _copy.hexagons = [[h.deepCopy() if h is not None else None for h in row] for row in self.hexagons]
+        _copy.edges = [[e.deepCopy() if e is not None else None for e in row] for row in self.edges]
+        _copy.vertices = [[v.deepCopy() if v is not None else None for v in row] for row in self.vertices]
+        _copy.allSettlements = [s.deepCopy() for s in self.allSettlements]
+        _copy.allRoads = [r.deepCopy() for r in self.allRoads]
+        _copy.robber = copy.deepcopy(self.robber)
+        return _copy
 
     def applyAction(self, playerIndex, action):
         if action is None:
