@@ -37,6 +37,10 @@ def resourceEvalFn(currentGameState, currentPlayerIndex):
     currentPlayer = currentGameState.playerAgents[currentPlayerIndex]
     return sum(currentPlayer.resources.values())
 
+def valueFunctionEvalFn(currentGameState, currentPlayerIndex):
+    pass 
+
+
 class DiceAgent:
     def __init__(self, numDiceSides = 6):
         self.agentType = AGENT.DICE_AGENT
@@ -893,7 +897,7 @@ class PlayerAgentExpectimax(PlayerAgent):
 class PlayerAgentExpectiminimax(PlayerAgent):
     def __init__(self, name, agentIndex, color, depth=DEPTH, evalFn=defaultEvalFn):
         super(PlayerAgentExpectiminimax, self).__init__(name, agentIndex, color, depth=depth, evalFn=evalFn)
-        self.TIME_LIMIT = 1  # 5 seconds
+        self.TIME_LIMIT = 5  # 5 seconds
 
     def getAction(self, state):
         start_time = time.time()
@@ -995,4 +999,237 @@ class PlayerAgentExpectiminimax(PlayerAgent):
                 break
         
 
+        return discarded
+    
+
+
+
+
+"""
+
+IMPLEMENTING THE VALUE FUNCTION PLAYER inspired by the code here: 
+https://github.com/bcollazo/catanatron/blob/f2b016d29ccacea8965dbb8356c54cf84313b3f2/catanatron_experimental/catanatron_experimental/machine_learning/players/value.py#L57 
+
+"""
+
+TRANSLATE_VARIETY = 4
+DEFAULT_WEIGHTS = {
+    # Where to place. Note winning is best at all costs
+    "public_vps": 3e9,
+    "production": 1e8,
+    "enemy_production": -1e8,
+    "num_tiles": 17,
+    # Towards where to expand and when
+    "reachable_production_0": 0,
+    "reachable_production_1": 1e4,
+    "buildable_nodes": 1e3,
+    "longest_road": 10,
+    # Hand, when to hold and when to use.
+    "hand_synergy": 1e2,
+    "hand_resources": 63,
+    "discard_penalty": -5,
+    "hand_devs": 10,
+    "army_size": 10.1,
+}
+
+# Change these to play around with new values
+CONTENDER_WEIGHTS = {
+    "public_vps": 300000000000001.94,
+    "production": 100000002.04188395,
+    "enemy_production": -99999998.03389844,
+    "num_tiles": 2.91440418,
+    "reachable_production_0": 2.03820085,
+    "reachable_production_1": 10002.018773150001,
+    "buildable_nodes": 1001.86278466,
+    "longest_road": 12.127388499999999,
+    "hand_synergy": 102.40606877,
+    "hand_resources": 2.43644327,
+    "discard_penalty": -3.00141993,
+    "hand_devs": 10.721669799999999,
+    "army_size": 12.93844622,
+}
+
+REACHABILITY_DEPTH = 2
+
+DEVELOPMENT_CARDS = list(DevCardTypes)
+
+def value_production(sample, player_name="P0", include_variety=True):
+    proba_point = 2.778 / 100
+    features = [
+        f"EFFECTIVE_{player_name}_GRAIN_PRODUCTION",
+        f"EFFECTIVE_{player_name}_ORE_PRODUCTION",
+        f"EFFECTIVE_{player_name}_WOOL_PRODUCTION",
+        f"EFFECTIVE_{player_name}_LUMBER_PRODUCTION",
+        f"EFFECTIVE_{player_name}_BRICK_PRODUCTION",
+    ]
+    prod_sum = sum([sample[f] for f in features])
+   
+    prod_variety = (
+        sum([sample[f] != 0 for f in features]) * TRANSLATE_VARIETY * proba_point
+    )
+    return prod_sum + (0 if not include_variety else prod_variety)
+
+
+def player_key(playerIndex): 
+    return f"P{playerIndex}"
+
+def resource_hand_features(gameState, playerIndex):
+    features = {}
+    for currentPlayerIndex in range(2):
+        key = player_key(currentPlayerIndex)
+        hand = gameState.playerAgents[currentPlayerIndex].resources
+        if currentPlayerIndex == playerIndex:
+            for resource in RESOURCES:
+                features[f"{key}_{resource}_IN_HAND"] = hand[resource]
+            cardDict = Counter(gameState.playerAgents[currentPlayerIndex].dev_cards)
+            for card in DEVELOPMENT_CARDS: 
+                features[f"{key}_{card}_IN_HAND"] = cardDict[card]
+            features[f"{key}_HAS_PLAYED_DEVELOPMENT_CARD_IN_TURN"] = gameState.playerAgents[currentPlayerIndex].dev_card_played_this_turn
+
+        for cardtype in DEVELOPMENT_CARDS:
+            if cardtype == DevCardTypes.VICTORY_POINT:
+                continue
+            playedCardsOfType = len([card for card in gameState.playerAgents[currentPlayerIndex].dev_cards if card.type == cardtype and card.has_been_used])
+            features[f"{key}_{cardtype}_PLAYED"] = playedCardsOfType
+        
+        features[f"{key}_NUM_RESOURCES_IN_HAND"] = sum(gameState.playerAgents[currentPlayerIndex].resources.values())
+        features[f"{key}_NUM_DEVELOPMENT_CARDS_IN_HAND"] = len(gameState.playerAgents[currentPlayerIndex].dev_cards)
+    return features
+
+
+def base_fn(params=DEFAULT_WEIGHTS):
+    
+    def fn(currentGameState, currentPlayerIndex):
+        enemyIndex = 1 - currentPlayerIndex
+        our_production_sample = currentGameState.board.getProductionSample(currentPlayerIndex)
+        enemy_production_sample = currentGameState.board.getProductionSample(enemyIndex)
+        
+
+        
+        production = value_production(our_production_sample, player_key(currentPlayerIndex), False)
+        enemy_production = value_production(enemy_production_sample, player_key(enemyIndex), False)
+
+        key = player_key(currentPlayerIndex)
+        longest_road_length = currentGameState.board.calculateLongestRoad(currentPlayerIndex)
+
+        reachability_sample = currentGameState.board.reachability_features(REACHABILITY_DEPTH)
+        features = [f"P0_0_ROAD_REACHABLE_{resource}" for resource in RESOURCES]
+        reachable_production_at_zero = sum([reachability_sample[f] for f in features])
+        features = [f"P0_1_ROAD_REACHABLE_{resource}" for resource in RESOURCES]
+        reachable_production_at_one = sum([reachability_sample[f] for f in features])
+
+        hand_sample = resource_hand_features(currentGameState, currentPlayerIndex)
+      
+        features = [f"{key}_{resource}_IN_HAND" for resource in RESOURCES]
+        distance_to_city = (
+            max(2 - hand_sample[f"{key}_GRAIN_IN_HAND"], 0)
+            + max(3 - hand_sample[f"{key}_ORE_IN_HAND"], 0)
+        ) / 5.0  # 0 means good. 1 means bad.
+        distance_to_settlement = (
+            max(1 - hand_sample[f"{key}_GRAIN_IN_HAND"], 0)
+            + max(1 - hand_sample[f"{key}_WOOL_IN_HAND"], 0)
+            + max(1 - hand_sample[f"{key}_BRICK_IN_HAND"], 0)
+            + max(1 - hand_sample[f"{key}_LUMBER_IN_HAND"], 0)
+        ) / 4.0  # 0 means good. 1 means bad.
+        hand_synergy = (2 - distance_to_city - distance_to_settlement) / 2
+
+        num_in_hand = hand_sample[f"{key}_NUM_RESOURCES_IN_HAND"]
+        discard_penalty = params["discard_penalty"] if num_in_hand > 7 else 0
+
+        # blockability
+    
+        num_tiles = currentGameState.board.getNumTiles(currentPlayerIndex) 
+
+        # TODO: Simplify to linear(?)
+        num_buildable_nodes = currentGameState.board.getNumBuildableTiles(currentPlayerIndex) 
+        longest_road_factor = (
+            params["longest_road"] if num_buildable_nodes == 0 else 0.1
+        )
+
+        player_num_dev_cards = len(currentGameState.playerAgents[currentPlayerIndex].dev_cards)
+        played_knights = len([card for card in currentGameState.playerAgents[currentPlayerIndex].dev_cards if card.type == DevCardTypes.KNIGHT and card.has_been_used])
+
+        return float(
+            currentGameState.playerAgents[currentPlayerIndex].victoryPoints * params["public_vps"]
+            + production * params["production"]
+            + enemy_production * params["enemy_production"]
+            + reachable_production_at_zero * params["reachable_production_0"]
+            + reachable_production_at_one * params["reachable_production_1"]
+            + hand_synergy * params["hand_synergy"]
+            + num_buildable_nodes * params["buildable_nodes"]
+            + num_tiles * params["num_tiles"]
+            + num_in_hand * params["hand_resources"]
+            + discard_penalty
+            + longest_road_length * longest_road_factor
+            + player_num_dev_cards * params["hand_devs"]
+            + played_knights * params["army_size"]
+        )
+
+    return fn
+
+def contender_fn(params):
+    return base_fn(params or CONTENDER_WEIGHTS)
+
+def get_value_fn(name, params, value_function=None):
+    if value_function is not None:
+        return value_function
+    elif name == "base_fn":
+        return base_fn(DEFAULT_WEIGHTS)
+    elif name == "contender_fn":
+        return contender_fn(params)
+    else:
+        raise ValueError
+
+class ValueFunctionPlayer(PlayerAgent):
+    def __init__(self, name, agentIndex, color, params= None, epsilon=None, value_fn_builder_name=None):
+        super(ValueFunctionPlayer, self).__init__(name, agentIndex, color)
+        self.params = params
+        self.epsilon = epsilon
+        self.value_fn_builder_name = (
+            "base_fn"
+        )
+
+    def getAction(self, state):
+        if self.epsilon is not None and random.random() < self.epsilon:
+            return random.choice(state.getLegalActions(self.agentIndex))
+
+        best_value = float("-inf")
+        best_action = None
+        for action in state.getLegalActions(self.agentIndex):
+            successor = state.generateSuccessor(self.agentIndex, action)
+            value_fn = get_value_fn(self.value_fn_builder_name, self.params)
+            value = value_fn(successor, self.agentIndex)
+            print("**********", value, action)
+            if value > best_value:
+                best_value = value
+                best_action = action
+        print(0 if best_action else (ACTIONS.PASS, None), best_action if best_action else (ACTIONS.PASS, None))
+        return 0 if best_action else (ACTIONS.PASS, None), best_action if best_action else (ACTIONS.PASS, None)
+
+    def filterActions(self, actions):
+        filtered_actions = actions + [(ACTIONS.PASS, None)]
+        return filtered_actions
+    
+    def discard_half_on_seven(self, gameState):
+        total_resources = sum(self.resources.values())
+        if total_resources <= 7:
+            return None
+
+        discard_count = total_resources // 2
+        discarded = self.choose_cards_to_discard(discard_count)
+        self.resources -= discarded
+        gameState.bank += discarded  # Add discarded resources back to the bank
+        return discarded
+
+    def choose_cards_to_discard(self, discard_count):
+        discarded = Counter()
+        resources_list = sorted(self.resources.items(), key=lambda x: x[1], reverse=True)
+        
+        for resource, count in resources_list:
+            while count > 0 and sum(discarded.values()) < discard_count:
+                discarded[resource] += 1
+                count -= 1
+            
+            if sum(discarded.values()) == discard_count:
+                break
         return discarded
