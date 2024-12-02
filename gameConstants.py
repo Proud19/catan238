@@ -52,6 +52,12 @@ class ResourceTypes(Enum):
     LUMBER = 5
     NOTHING = 6
 
+    def __str__(self):
+        # Override to return resource name in uppercase
+        return self.name.upper()
+    
+RESOURCES = [resource for resource in ResourceTypes if resource != ResourceTypes.NOTHING]
+
 class AGENT(Enum):
     PLAYER_AGENT = 1
     DICE_AGENT = 2

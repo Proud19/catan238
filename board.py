@@ -5,6 +5,7 @@ import pygame
 from pygame.locals import *
 from draw import choose_vertex, choose_edge
 import copy
+from collections import Counter
 
 # # Possible actions a player can take
 # class Actions(Enum):
@@ -27,6 +28,14 @@ class Hexagon:
 
     def __repr__(self):
         return f"/{ResourceDict[self.resource]}{self.diceValue} ({self.X}, {self.Y})\\"
+
+    def __eq__(self, other):
+        if isinstance(other, Hexagon):
+            return self.X == other.X and self.Y == other.Y
+        return False
+
+    def __hash__(self):
+        return hash((self.X, self.Y))
 
 class Vertex:
     def __init__(self, X, Y):
@@ -106,6 +115,16 @@ class Edge:
     def __repr__(self):
         coordinateString = f" ({self.X}, {self.Y})"
         return f"R{self.player}{coordinateString}" if self.isOccupied() else f"Unoccupied{coordinateString}"
+    
+    def __eq__(self, other):
+        # Compare based on coordinates and player
+        if not isinstance(other, Edge):
+            return False
+        return (self.X, self.Y, self.player) == (other.X, other.Y, other.player)
+
+    def __hash__(self):
+        # Use a tuple of attributes to generate a unique hash
+        return hash((self.X, self.Y, self.player))
 
 class Tile:
     def __init__(self, resource, number):
@@ -299,8 +318,8 @@ class Board:
         
         for playerIndex in range(2):
             playerSettlements = []
-            for hex in [lumberHexes[playerIndex], brickHexes[playerIndex]]:
-                vertex = self.getRandomUnoccupiedVertexOnHex(hex)
+            for _ in range(2): 
+                vertex = self.getRandomUnoccupiedVertexOnHex(hex) 
                 if vertex:
                     self.applyAction(playerIndex, (ACTIONS.SETTLE, vertex))
                     playerSettlements.append(vertex)
@@ -310,7 +329,7 @@ class Board:
         return settlements
 
     def getRandomUnoccupiedVertexOnHex(self, hex):
-        vertices = self.getVertices(hex)
+        vertices = self.getAllVertices()
         random.shuffle(vertices)
         for vertex in vertices:
             if vertex.canSettle:
@@ -434,6 +453,14 @@ class Board:
             self.vertices[x+1][2*y+1+offset],
             self.vertices[x+1][2*y+2+offset]
         ]
+    
+    def getAllVertices(self):
+        vertices = []
+        for i in range(len(self.vertices)):
+            for j in range(len(self.vertices[i])):
+                if self.vertices[i][j] is not None:
+                    vertices.append(self.vertices[i][j])
+        return vertices
 
     def getEdges(self, hex):
         x, y = hex.X, hex.Y
@@ -511,6 +538,9 @@ class Board:
         
         return max_road_length
     
+    def calculateLongestRoadInTheGame(self):
+        return max(self.calculateLongestRoad(playerIndex) for playerIndex in range(2))
+    
     def getConnectedVertices(self, vertex, playerIndex):
         connected = []
         for edge in self.getEdgesOfVertex(vertex):
@@ -559,3 +589,119 @@ class Board:
                 break
 
         return connected
+
+
+    def getProductionSample(self, playerIndex): 
+        prefix = "EFFECTIVE_"
+        # Simulate rolls for every possible value (2-12 dice rolls)
+        res_list = []
+        for i in range(1, 13): 
+            res_list += self.getResourcesFromDieRollForPlayer(playerIndex, i)
+        
+        # Count resource occurrences
+        resource_count = Counter(res_list)
+        
+        # Format the result into the desired structure
+        production_features = {
+            f"{prefix}P{playerIndex}_{str(resource)}_PRODUCTION": resource_count[resource]
+            for resource in RESOURCES
+        }
+        
+        return production_features
+    
+    def reachability_features(self, levels):
+        """
+        Computes the reachability features for a player based on the provided game board levels.
+
+        Args:
+            playerIndex (int): The index of the player whose reachability features are being calculated.
+            levels (Board): The game board, including vertices, edges, and other game state.
+
+        Returns:
+            dict: A dictionary where keys are resource types and values are the number of accessible resources
+                of that type for the player.
+
+
+        NB: Nodes are actually "vertices". 
+        """
+        features = {}
+        board_buildable = set([v for v in self.getAllVertices() if v.canSettle])
+
+        # loop for player
+        for currentPlayerIndex in range(2):
+            owned_or_buildable = set([v for v in board_buildable if v.player == currentPlayerIndex])
+    
+            # BreathFirst Search
+            zero_nodes = []  # level zero vertex 
+            for vertex in self.getAllVertices(): 
+                if vertex.player == currentPlayerIndex:
+                    if vertex.isCity or vertex.isSettlement:
+                        zero_nodes.append(vertex) # level zero reachable resources 
+
+            production = self.countProduction(owned_or_buildable.union(zero_nodes))
+
+            # layer 0 
+            for resource in RESOURCES:
+                features[f"P{currentPlayerIndex}_0_ROAD_REACHABLE_{resource}"] = production[resource]
+            
+            # rest of the layers 
+            def iter_level_nodes(zero_nodes, num_roads):
+                last_layer_nodes = zero_nodes
+                paths = {i : [] for i in zero_nodes}
+                result = []
+                for level in range(1, num_roads): 
+                    level_nodes = set(last_layer_nodes)
+                    for node in last_layer_nodes:
+                        if node.player != currentPlayerIndex: 
+                            continue 
+                        expandable = []
+                        for edge in self.getEdgesOfVertex(node):
+                            if edge.isOccupied():
+                                continue
+                            ends = self.getVertexEnds(edge)
+                            neighbor = None
+                            for v in ends: 
+                                if v != node: 
+                                    expandable.append(v)
+                                neighbor = v
+                            if neighbor not in paths: 
+                                paths[neighbor] = paths[node] + [(node, neighbor)]
+                    level_nodes.update(expandable)
+                result.append((level, level_nodes, paths))
+                last_layer_nodes = level_nodes
+                return result
+            
+            for level, level_nodes, _ in iter_level_nodes(zero_nodes, levels):
+                production = self.countProduction(level_nodes)
+                for resource in RESOURCES:
+                    features[f"P{currentPlayerIndex}_{level}_ROAD_REACHABLE_{resource}"] = production[resource]
+
+        return features
+
+    def countProduction(self, vertices): 
+        production = Counter() 
+        for vertex in vertices: 
+            for hexagon in self.getHexes(vertex): 
+                if hexagon.resource != ResourceTypes.NOTHING:
+                    production[hexagon.resource] += 1
+                    if vertex.isCity:
+                        production[hexagon.resource] += 1
+        return production
+
+    
+    def getNumTiles(self, playerIndex):
+        count = 0
+        for vertex in self.getAllVertices(): 
+            if vertex.player != playerIndex:
+                continue
+            count += len(self.getHexes(vertex))
+        return count
+    
+    def getNumBuildableTiles(self, playerIndex):
+        count = 0
+        for vertex in self.getAllVertices(): 
+            if vertex.player != playerIndex:
+                continue
+            if vertex.canSettle:
+                count += 1
+        return count
