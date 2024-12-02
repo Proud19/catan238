@@ -552,7 +552,7 @@ class PlayerAgentHuman(PlayerAgent):
         print(possibleActions)
         print(self.settlements)
         print(self.roads)
-        print(self.canBuildRoad)
+        print(self.canBuildRoad())
         if possibleActions:
 
             print(self.get_resources_as_string())
@@ -572,10 +572,11 @@ class PlayerAgentHuman(PlayerAgent):
                 index_map[i] = action
                 print(f"{i+1}: {action.name.capitalize()}")
 
-            actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
-            while actionIndex < 0 or actionIndex >= len(action_map):
+            actionIndex = input("Enter the number of the action you want to take: ")
+            while not actionIndex.isdigit() or int(actionIndex) < 1 or int(actionIndex) > len(action_map):
                 print("Invalid action index. Please try again.")
-                actionIndex = int(input("Enter the number of the action you want to take: ")) - 1
+                actionIndex = input("Enter the number of the action you want to take: ")
+            actionIndex = int(actionIndex) - 1
 
             chosenAction = index_map[actionIndex]
             if DEBUG and VERBOSE:
@@ -595,10 +596,11 @@ class PlayerAgentHuman(PlayerAgent):
                 for i, trade_items in enumerate(action_map[chosenAction]):
                     print(f"{i+1}: Trade {trade_items[0].name.capitalize()} for {trade_items[1].name.capitalize()}")
                 
-                chosen_trade = int(input("Enter the number of the trade you want to make: ")) - 1
-                while chosen_trade < 0 or chosen_trade >= len(action_map[chosenAction]):
+                chosen_trade = input("Enter the number of the trade you want to make: ")
+                while not chosen_trade.isdigit() or int(chosen_trade) < 1 or chosen_trade > len(action_map[chosenAction]):
                     print("Invalid trade index. Please try again.")
-                    chosen_trade = int(input("Enter the number of the trade you want to make: ")) - 1
+                    chosen_trade = input("Enter the number of the trade you want to make: ")
+                chosen_trade = int(chosen_trade) - 1
                 
                 return (0, (chosenAction, action_map[chosenAction][chosen_trade]))
             
@@ -613,10 +615,11 @@ class PlayerAgentHuman(PlayerAgent):
                         print(f"{j}: {card_type.name.capitalize()}")
                         j += 1
                 
-                card_index = int(input("Enter the number of the card you want to play: ")) - 1
-                while card_index < 0 or card_index >= len(possible_cards):
+                card_index = input("Enter the number of the card you want to play: ")
+                while not card_index.isdigit() or int(card_index) < 1 or int(card_index) > len(possible_cards):
                     print("Choose a valid card.")
-                    card_index = int(input("Enter the number of the card you want to play: ")) - 1
+                    card_index = input("Enter the number of the card you want to play: ")
+                card_index = int(card_index) - 1
 
                 card_type = possible_cards[card_index]
                 print(card_type)

@@ -1,3 +1,8 @@
+# Fixes with initialization
+# Collecting initial resources
+# If I let the bot go first, I have to initialize 2x
+# I think there may be a bug with canBuildRoad in agents.
+
 import pygame
 from agents import *
 from board import BeginnerLayout, Board, Edge, Hexagon, Vertex
