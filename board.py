@@ -318,8 +318,8 @@ class Board:
         
         for playerIndex in range(2):
             playerSettlements = []
-            for hex in [lumberHexes[playerIndex], brickHexes[playerIndex]]:
-                vertex = self.getRandomUnoccupiedVertexOnHex(hex)
+            for _ in range(2): 
+                vertex = self.getRandomUnoccupiedVertexOnHex(hex) 
                 if vertex:
                     self.applyAction(playerIndex, (ACTIONS.SETTLE, vertex))
                     playerSettlements.append(vertex)
@@ -329,7 +329,7 @@ class Board:
         return settlements
 
     def getRandomUnoccupiedVertexOnHex(self, hex):
-        vertices = self.getVertices(hex)
+        vertices = self.getAllVertices()
         random.shuffle(vertices)
         for vertex in vertices:
             if vertex.canSettle:
