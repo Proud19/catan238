@@ -280,6 +280,7 @@ class PlayerAgent(object):
                     return (card_type, [])  # Return empty list if already at max roads
                 roads_built = []
                 for road_coords in card_action:
+                    print(road_coords)
                     if self.numRoads < MAX_ROADS:  # Change to < instead of <=
                         if self.buildRoad(road_coords, board, gameState):
                             roads_built.append(road_coords)
@@ -630,11 +631,11 @@ class PlayerAgentHuman(PlayerAgent):
 
                     print("Choose two roads to build:")
                     edge1 = choose_edge(legal_edges, gameState.board, self.draw)
-                    self.buildRoad((edge1.X, edge1.Y), gameState.board, gameState)
+                    self.buildRoad(edge1, gameState.board, gameState)
                     legal_edges = [Edge(spot[0], spot[1]) for spot in self.get_legal_road_spots(gameState.board)]
                     edge2 = choose_edge(legal_edges, gameState.board, self.draw)
 
-                    return (0, (ACTIONS.PLAY_DEV_CARD, (DevCardTypes.ROAD_BUILDING, [(edge1.X, edge1.Y), (edge2.X, edge2.Y)])))
+                    return (0, (ACTIONS.PLAY_DEV_CARD, (DevCardTypes.ROAD_BUILDING, [edge1, edge2])))
                 elif card_type == DevCardTypes.YEAR_OF_PLENTY:
                     print("Choose two resources to collect:")
 
