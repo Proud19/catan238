@@ -86,6 +86,7 @@ class GameState:
             
 
         legalActions.append((ACTIONS.PASS, None))
+        # print(legalActions)
 
         return legalActions
 
@@ -96,6 +97,9 @@ class GameState:
         copy = self.deepCopy()
         # copy.playerAgents[playerIndex].applyAction(action, copy.board, copy)
         copy.board.applyAction(playerIndex, action)
+        copy.playerAgents[playerIndex].applyAction(action, copy.board, copy)
+        
+        
         return copy
 
     def makeMove(self, playerIndex, action):
@@ -139,6 +143,7 @@ class GameState:
                 print(f"{agent.name} now has: {agent.resources}")
 
     def applyAction(self, playerIndex, action):
+        # raise NotImplementedError
         result = self.playerAgents[playerIndex].applyAction(action, self.board, self)
         self.board.applyAction(playerIndex, action)
         if action[0] == ACTIONS.ROAD:
@@ -299,7 +304,9 @@ class Game:
         playerTypes = {
             0: PlayerAgentRandom,
             1: lambda name, index, color: PlayerAgentHuman(name, index, color), 
-            2: lambda name, index, color: PlayerAgentExpectiminimax(name, index, color),
+            2: lambda name, index, color: PlayerAgentExpectimax(name, index, color),
+            3: lambda name, index, color: ValueFunctionPlayer(name, index, color),
+            
         }
 
         return playerTypes.get(playerCode, PlayerAgentRandom)(playerName, index, color)
@@ -554,10 +561,6 @@ class Game:
 
             if action[0] == ACTIONS.PLAY_DEV_CARD:
                 card_type, card_action = action[1]
-                if currentAgent.dev_card_played_this_turn and card_type != DevCardTypes.VICTORY_POINT:
-                    if VERBOSE:
-                        print(f"{currentAgent.name} can't play more than one dev card per turn.")
-                    continue
 
                 # Apply the action
                 self.gameState.applyAction(self.currentAgentIndex, action)
@@ -589,36 +592,6 @@ class Game:
         if self.turnNumber > CUTOFF_TURNS:
             print("Game reached turn limit without a winner.")
             self.menu_state = "WINNER"
-
-
-def run_simulations(n):
-    # setting suitable params to run simulations 
-    VERBOSE = False
-    GRAPHICS = False
-    DEBUG = False
-
-
-    playerAgentNums = [0, 2]  # This currently simulates random players
-    agentNames = ["random1", "random2"]
-    wins = [0, 0]
-
-    for _ in range(n): 
-        game = Game(playerAgentNums=playerAgentNums)
-        winnerIndex, _, _ = game.run()
-        if winnerIndex == 0 or winnerIndex == 1: 
-            wins[winnerIndex] += 1
-        print("The winner of this round is ", winnerIndex)
-
-    # Formatting the results nicely
-    print("\nSimulation Results:")
-    print("=" * 20)
-    print(f"{'Agent Name':<10} | {'Wins':<5}")
-    print("-" * 20)
-    for i, name in enumerate(agentNames):
-        print(f"{name:<10} | {wins[i]:<5}")
-    print("=" * 20)
-    print(f"Total Simulations: {n}")
-    
         
 
 
@@ -644,6 +617,37 @@ def getPlayerAgentSpecifications():
         return [firstPlayerAgent, secondPlayerAgent]
     else:
         return DEFAULT_PLAYER_ARRAY
+    
+
+
+def run_simulations(n):
+    # setting suitable params to run simulations 
+    VERBOSE = False
+    GRAPHICS = False
+    DEBUG = False
+
+
+    playerAgentNums = [0, 3]  # This currently simulates random players
+    agentNames = ["PlayerAgentRandom", "ValueFunctionPlayer"]
+    wins = [0, 0]
+
+    for _ in range(n): 
+        game = Game(playerAgentNums=playerAgentNums)
+        winnerIndex, _, _ = game.run()
+        if winnerIndex == 0 or winnerIndex == 1: 
+            wins[winnerIndex] += 1
+        print("The winner of this round is ", winnerIndex)
+
+    # Formatting the results nicely
+    print("\nSimulation Results:")
+    print("=" * 20)
+    print(f"{'Agent Name':<10} | {'Wins':<5}")
+    print("-" * 20)
+    for i, name in enumerate(agentNames):
+        print(f"{name:<10} | {wins[i]:<5}")
+    print("=" * 20)
+    print(f"Total Simulations: {n}")
+    
 
 if __name__ == "__main__":
     # Set up argument parser
