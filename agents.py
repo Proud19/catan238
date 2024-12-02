@@ -191,7 +191,7 @@ class PlayerAgent(object):
     def applyAction(self, action, board, gameState):
         if action is None:
             return
-
+        
         elif action[0] is ACTIONS.SETTLE:
             if not self.canSettle():
                 raise Exception(f"Player {self.agentIndex} doesn't have enough resources to build a settlement!")
@@ -207,13 +207,14 @@ class PlayerAgent(object):
         elif action[0] is ACTIONS.ROAD:
             if not self.canBuildRoad():
                 raise Exception(f"Player {self.agentIndex} doesn't have enough resources to build a road!")
-
+            
             actionEdge = action[1]
             road = board.getEdge(actionEdge.X, actionEdge.Y)
             self.roads.append(road)
             self.resources.subtract(ROAD_COST)
             gameState.bank.update(ROAD_COST)  # Add resources back to the bank
             self.numRoads += 1
+          
 
         elif action[0] is ACTIONS.CITY:
             if not self.canBuildCity():
@@ -1002,9 +1003,6 @@ class PlayerAgentExpectiminimax(PlayerAgent):
         return discarded
     
 
-
-
-
 """
 
 IMPLEMENTING THE VALUE FUNCTION PLAYER inspired by the code here: 
@@ -1113,9 +1111,9 @@ def base_fn(params=DEFAULT_WEIGHTS):
         longest_road_length = currentGameState.board.calculateLongestRoad(currentPlayerIndex)
 
         reachability_sample = currentGameState.board.reachability_features(REACHABILITY_DEPTH)
-        features = [f"P0_0_ROAD_REACHABLE_{resource}" for resource in RESOURCES]
+        features = [f"{key}_0_ROAD_REACHABLE_{resource}" for resource in RESOURCES]
         reachable_production_at_zero = sum([reachability_sample[f] for f in features])
-        features = [f"P0_1_ROAD_REACHABLE_{resource}" for resource in RESOURCES]
+        features = [f"{key}_1_ROAD_REACHABLE_{resource}" for resource in RESOURCES]
         reachable_production_at_one = sum([reachability_sample[f] for f in features])
 
         hand_sample = resource_hand_features(currentGameState, currentPlayerIndex)
@@ -1137,10 +1135,8 @@ def base_fn(params=DEFAULT_WEIGHTS):
         discard_penalty = params["discard_penalty"] if num_in_hand > 7 else 0
 
         # blockability
-    
         num_tiles = currentGameState.board.getNumTiles(currentPlayerIndex) 
-
-        # TODO: Simplify to linear(?)
+     
         num_buildable_nodes = currentGameState.board.getNumBuildableTiles(currentPlayerIndex) 
         longest_road_factor = (
             params["longest_road"] if num_buildable_nodes == 0 else 0.1
@@ -1196,15 +1192,17 @@ class ValueFunctionPlayer(PlayerAgent):
         best_value = float("-inf")
         best_action = None
         for action in state.getLegalActions(self.agentIndex):
+            if action[0] == ACTIONS.PASS:  # remove pass action from possible actions
+                continue 
+            
             successor = state.generateSuccessor(self.agentIndex, action)
             value_fn = get_value_fn(self.value_fn_builder_name, self.params)
             value = value_fn(successor, self.agentIndex)
-            print("**********", value, action)
+           
             if value > best_value:
                 best_value = value
                 best_action = action
-        print(0 if best_action else (ACTIONS.PASS, None), best_action if best_action else (ACTIONS.PASS, None))
-        return 0 if best_action else (ACTIONS.PASS, None), best_action if best_action else (ACTIONS.PASS, None)
+        return 0 if not best_action else best_value, best_action if best_action else (ACTIONS.PASS, None)
 
     def filterActions(self, actions):
         filtered_actions = actions + [(ACTIONS.PASS, None)]
