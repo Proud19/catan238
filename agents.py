@@ -1190,6 +1190,7 @@ class ValueFunctionPlayer(PlayerAgent):
         )
 
     def getAction(self, state):
+        # In our code rn, self.epsilon is always None
         if self.epsilon is not None and random.random() < self.epsilon:
             return random.choice(state.getLegalActions(self.agentIndex))
 
@@ -1235,3 +1236,18 @@ class ValueFunctionPlayer(PlayerAgent):
             if sum(discarded.values()) == discard_count:
                 break
         return discarded
+
+class LookAheadRolloutPlayer(PlayerAgent):
+    # The rollout policy should draw the action from action distribution pi(s)
+    # To produce rollout simulartions, we need to use a generative model 
+    # that generates s' from T(s' | s, a); this is actually deterministic in our case.
+
+    def __init__(self, name, agentIndex, color, depth=1, rollout_policy=None, value_fn_builder_name=("base_fn")):
+        super(LookAheadRolloutPlayer, self).__init__(name, agentIndex, color)
+        self.depth = depth
+        self.rollout_policy = rollout_policy
+        self.value_fn_builder_name = value_fn_builder_name
+
+        # Random policy
+        if rollout_policy is None:
+            self.pi = lambda state: random.choice(state.getLegalActions(self.agentIndex))
