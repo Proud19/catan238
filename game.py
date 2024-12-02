@@ -306,7 +306,6 @@ class Game:
             1: lambda name, index, color: PlayerAgentHuman(name, index, color), 
             2: lambda name, index, color: PlayerAgentExpectimax(name, index, color),
             3: lambda name, index, color: ValueFunctionPlayer(name, index, color),
-            
         }
 
         return playerTypes.get(playerCode, PlayerAgentRandom)(playerName, index, color)
@@ -326,8 +325,9 @@ class Game:
             # Get settlement
             if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
                 vertex = self.gameState.board.getHumanVertexForSettlement()
-            elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom):
+            elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom) or isinstance(self.gameState.playerAgents[i], PlayerAgentExpectimax) or isinstance(self.gameState.playerAgents[i], ValueFunctionPlayer):
                 vertex = self.gameState.board.getRandomVertexForSettlement()
+            
             
             self.gameState.board.applyAction(i, (ACTIONS.SETTLE, vertex))
             agent.settlements.extend([vertex])
@@ -338,7 +338,7 @@ class Game:
             # Get connected road
             if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
                 road = self.gameState.board.getHumanRoad(vertex)
-            elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom):
+            elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom) or isinstance(self.gameState.playerAgents[i], PlayerAgentExpectimax) or isinstance(self.gameState.playerAgents[i], ValueFunctionPlayer):
                 road = self.gameState.board.getRandomRoad(vertex)
             
             self.gameState.board.applyAction(i, (ACTIONS.ROAD, road))
@@ -598,7 +598,9 @@ class Game:
 def getStringForPlayer(playerCode):
     playerTypes = {
         0: "Random Agent",
-        1: "Human Player"
+        1: "Human Player",
+        2: "Expectimax Agent",
+        3: "Value Function Player"
     }
     return playerTypes.get(playerCode, "Not a player.")
 
@@ -608,7 +610,9 @@ def getPlayerAgentSpecifications():
         print("-----------------------------")
         for i, agent in enumerate([
             "Random Agent",
-            "Human Player"
+            "Human Player",
+            "Expectimax Agent",
+            "Value Function Player"
         ]):
             print(f"{i}: {agent}")
 
