@@ -2,6 +2,7 @@
 # Collecting initial resources
 # If I let the bot go first, I have to initialize 2x
 # I think there may be a bug with canBuildRoad in agents.
+# Board has same initialization every time
 
 import pygame
 from agents import *

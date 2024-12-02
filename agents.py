@@ -597,7 +597,7 @@ class PlayerAgentHuman(PlayerAgent):
                     print(f"{i+1}: Trade {trade_items[0].name.capitalize()} for {trade_items[1].name.capitalize()}")
                 
                 chosen_trade = input("Enter the number of the trade you want to make: ")
-                while not chosen_trade.isdigit() or int(chosen_trade) < 1 or chosen_trade > len(action_map[chosenAction]):
+                while not chosen_trade.isdigit() or int(chosen_trade) < 1 or int(chosen_trade) > len(action_map[chosenAction]):
                     print("Invalid trade index. Please try again.")
                     chosen_trade = input("Enter the number of the trade you want to make: ")
                 chosen_trade = int(chosen_trade) - 1
