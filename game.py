@@ -86,6 +86,7 @@ class GameState:
             
 
         legalActions.append((ACTIONS.PASS, None))
+        # print(legalActions)
 
         return legalActions
 
@@ -96,6 +97,9 @@ class GameState:
         copy = self.deepCopy()
         # copy.playerAgents[playerIndex].applyAction(action, copy.board, copy)
         copy.board.applyAction(playerIndex, action)
+        copy.playerAgents[playerIndex].applyAction(action, copy.board, copy)
+        
+        
         return copy
 
     def makeMove(self, playerIndex, action):
@@ -139,6 +143,7 @@ class GameState:
                 print(f"{agent.name} now has: {agent.resources}")
 
     def applyAction(self, playerIndex, action):
+        # raise NotImplementedError
         result = self.playerAgents[playerIndex].applyAction(action, self.board, self)
         self.board.applyAction(playerIndex, action)
         if action[0] == ACTIONS.ROAD:

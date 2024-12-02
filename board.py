@@ -29,6 +29,14 @@ class Hexagon:
     def __repr__(self):
         return f"/{ResourceDict[self.resource]}{self.diceValue} ({self.X}, {self.Y})\\"
 
+    def __eq__(self, other):
+        if isinstance(other, Hexagon):
+            return self.X == other.X and self.Y == other.Y
+        return False
+
+    def __hash__(self):
+        return hash((self.X, self.Y))
+
 class Vertex:
     def __init__(self, X, Y):
         self.X = X
