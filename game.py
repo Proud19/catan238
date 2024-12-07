@@ -279,9 +279,9 @@ class Game:
         if GRAPHICS:
             self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
         self.initializePlayers()
-        # self.initializeSettlementsAndResourcesLumberBrick()
         self.gameState.board.set_draw(self.draw)
         self.initializeBasedOnPlayerAgent()
+        self.distributeInitialResources()  # Add this line
 
         if VERBOSE and DEBUG:
             print("Player agent nums: ", self.playerAgentNums)
@@ -291,7 +291,7 @@ class Game:
                 print("Agent num: ", agent_num)
             if agent_num == 1:
                 if VERBOSE and DEBUG:
-                    print("Setting draw for human avent")
+                    print("Setting draw for human agent")
                 self.gameState.playerAgents[i].set_draw(self.draw)
 
 
@@ -329,11 +329,12 @@ class Game:
             agent = self.gameState.playerAgents[i]
 
             # Get settlement
-            if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
+            if isinstance(agent, PlayerAgentHuman):
                 vertex = self.gameState.board.getHumanVertexForSettlement()
-            elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom) or isinstance(self.gameState.playerAgents[i], PlayerAgentExpectimax) or isinstance(self.gameState.playerAgents[i], ValueFunctionPlayer):
+            elif isinstance(agent, PlayerAgentRandom):
                 vertex = self.gameState.board.getRandomVertexForSettlement()
-            
+            elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer)):
+                vertex = agent.choose_initial_settlement(self.gameState.board)
             
             self.gameState.board.applyAction(i, (ACTIONS.SETTLE, vertex))
             agent.settlements.extend([vertex])
@@ -342,10 +343,12 @@ class Game:
             pygame.display.flip()
 
             # Get connected road
-            if isinstance(self.gameState.playerAgents[i], PlayerAgentHuman):
+            if isinstance(agent, PlayerAgentHuman):
                 road = self.gameState.board.getHumanRoad(vertex)
-            elif isinstance(self.gameState.playerAgents[i], PlayerAgentRandom) or isinstance(self.gameState.playerAgents[i], PlayerAgentExpectimax) or isinstance(self.gameState.playerAgents[i], ValueFunctionPlayer):
+            elif isinstance(agent, PlayerAgentRandom):
                 road = self.gameState.board.getRandomRoad(vertex)
+            elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer)):
+                road = agent.choose_initial_road(vertex, self.gameState.board)
             
             self.gameState.board.applyAction(i, (ACTIONS.ROAD, road))
             agent.roads.extend([road])
@@ -466,7 +469,7 @@ class Game:
 
 
         self.initializePlayers()
-        self.initializeSettlementsAndResourcesLumberBrick()
+        #self.initializeSettlementsAndResourcesLumberBrick()
         running = True
 
         if GRAPHICS: 
@@ -598,6 +601,35 @@ class Game:
         if self.turnNumber > CUTOFF_TURNS:
             print("Game reached turn limit without a winner.")
             self.menu_state = "WINNER"
+
+    def distributeInitialResources(self):
+        for agent in self.gameState.playerAgents:
+            # We'll use the last settlement in the list, which should be the second one placed
+            second_settlement = agent.settlements[-1]
+            initial_resources = Counter()
+
+            # Get the hexes surrounding the second settlement
+            surrounding_hexes = self.gameState.board.getHexes(second_settlement)
+            
+            for hex in surrounding_hexes:
+                if hex.resource != ResourceTypes.NOTHING:
+                    initial_resources[hex.resource] += 1
+
+            # Distribute the resources
+            if initial_resources:
+                can_fulfill = all(self.gameState.bank[resource] >= amount for resource, amount in initial_resources.items())
+                if can_fulfill:
+                    for resource, amount in initial_resources.items():
+                        self.gameState.bank[resource] -= amount
+                        agent.resources[resource] += amount
+                    if VERBOSE:
+                        print(f"{agent.name} received initial resources: {dict(initial_resources)}")
+                else:
+                    if VERBOSE:
+                        print(f"Bank couldn't fulfill initial resources for {agent.name}")
+            else:
+                if VERBOSE:
+                    print(f"No initial resources collected for {agent.name}")
         
 
 
