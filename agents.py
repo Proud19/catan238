@@ -549,10 +549,10 @@ class PlayerAgentHuman(PlayerAgent):
 
     def getAction(self, gameState):
         possibleActions = gameState.getLegalActions(self.agentIndex)
-        print(possibleActions)
-        print(self.settlements)
-        print(self.roads)
-        print(self.canBuildRoad())
+        #print(possibleActions)
+        #print(self.settlements)
+        #print(self.roads)
+        #print(self.canBuildRoad())
         if possibleActions:
 
             print(self.get_resources_as_string())
@@ -897,6 +897,44 @@ class PlayerAgentExpectimax(PlayerAgent):
     def discard_half_on_seven(self, gameState):
         return super().discard_half_on_seven(gameState)
     
+    def choose_initial_settlement(self, board):
+        best_value = float('-inf')
+        best_vertex = None
+        for vertex in board.getAllVertices():
+            if vertex.canSettle:
+                value = self.evaluate_settlement_spot(vertex, board)
+                if value > best_value:
+                    best_value = value
+                    best_vertex = vertex
+        return best_vertex
+
+    def choose_initial_road(self, vertex, board):
+        best_value = float('-inf')
+        best_edge = None
+        for edge in board.getEdgesOfVertex(vertex):
+            if not edge.isOccupied():
+                value = self.evaluate_road_spot(edge, board)
+                if value > best_value:
+                    best_value = value
+                    best_edge = edge
+        return best_edge
+
+    def evaluate_settlement_spot(self, vertex, board):
+        hexes = board.getHexes(vertex)
+        value = 0
+        for hex in hexes:
+            if hex.resource != ResourceTypes.NOTHING:
+                value += 6 - abs(7 - hex.diceValue)  # Higher value for more probable numbers
+        return value
+
+    def evaluate_road_spot(self, edge, board):
+        vertices = board.getVertexEnds(edge)
+        value = 0
+        for vertex in vertices:
+            if vertex.canSettle:
+                value += self.evaluate_settlement_spot(vertex, board)
+        return value
+    
 
 
 class PlayerAgentExpectiminimax(PlayerAgent):
@@ -1005,6 +1043,44 @@ class PlayerAgentExpectiminimax(PlayerAgent):
         
 
         return discarded
+    
+    def choose_initial_settlement(self, board):
+        best_value = float('-inf')
+        best_vertex = None
+        for vertex in board.getAllVertices():
+            if vertex.canSettle:
+                value = self.evaluate_settlement_spot(vertex, board)
+                if value > best_value:
+                    best_value = value
+                    best_vertex = vertex
+        return best_vertex
+
+    def choose_initial_road(self, vertex, board):
+        best_value = float('-inf')
+        best_edge = None
+        for edge in board.getEdgesOfVertex(vertex):
+            if not edge.isOccupied():
+                value = self.evaluate_road_spot(edge, board)
+                if value > best_value:
+                    best_value = value
+                    best_edge = edge
+        return best_edge
+
+    def evaluate_settlement_spot(self, vertex, board):
+        hexes = board.getHexes(vertex)
+        value = 0
+        for hex in hexes:
+            if hex.resource != ResourceTypes.NOTHING:
+                value += 6 - abs(7 - hex.diceValue)  # Higher value for more probable numbers
+        return value
+
+    def evaluate_road_spot(self, edge, board):
+        vertices = board.getVertexEnds(edge)
+        value = 0
+        for vertex in vertices:
+            if vertex.canSettle:
+                value += self.evaluate_settlement_spot(vertex, board)
+        return value
     
 
 """
@@ -1236,6 +1312,44 @@ class ValueFunctionPlayer(PlayerAgent):
             if sum(discarded.values()) == discard_count:
                 break
         return discarded
+    
+    def choose_initial_settlement(self, board):
+        best_value = float('-inf')
+        best_vertex = None
+        for vertex in board.getAllVertices():
+            if vertex.canSettle:
+                value = self.evaluate_settlement_spot(vertex, board)
+                if value > best_value:
+                    best_value = value
+                    best_vertex = vertex
+        return best_vertex
+
+    def choose_initial_road(self, vertex, board):
+        best_value = float('-inf')
+        best_edge = None
+        for edge in board.getEdgesOfVertex(vertex):
+            if not edge.isOccupied():
+                value = self.evaluate_road_spot(edge, board)
+                if value > best_value:
+                    best_value = value
+                    best_edge = edge
+        return best_edge
+
+    def evaluate_settlement_spot(self, vertex, board):
+        hexes = board.getHexes(vertex)
+        value = 0
+        for hex in hexes:
+            if hex.resource != ResourceTypes.NOTHING:
+                value += 6 - abs(7 - hex.diceValue)  # Higher value for more probable numbers
+        return value
+
+    def evaluate_road_spot(self, edge, board):
+        vertices = board.getVertexEnds(edge)
+        value = 0
+        for vertex in vertices:
+            if vertex.canSettle:
+                value += self.evaluate_settlement_spot(vertex, board)
+        return value
 
 class LookAheadRolloutPlayer(PlayerAgent):
     # The rollout policy should draw the action from action distribution pi(s)
