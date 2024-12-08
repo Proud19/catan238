@@ -4,8 +4,11 @@ from collections import Counter
 GRAPHICS = True
 VERBOSE = True
 DEBUG = False
-AUTORUN = True
+AUTORUN = True #Set to True for Human Mode
 TRAIN = True
+
+TEST_MODE = True
+NUM_TEST_GAMES = 100
 
 def getColorForPlayer(player):
     return {
