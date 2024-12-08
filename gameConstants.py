@@ -2,7 +2,7 @@ from enum import Enum
 from collections import Counter
 
 GRAPHICS = True
-VERBOSE = True
+VERBOSE = False
 DEBUG = False
 AUTORUN = True #Set to True for Human Mode
 TRAIN = False
