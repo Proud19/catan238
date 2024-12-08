@@ -1,16 +1,19 @@
-from collections import Counter
+from collections import Counter, deque, namedtuple
 import copy
 from gameConstants import *
 import random
 import time
 from draw import choose_edge, choose_hex, choose_vertex
 import math
-from board import Edge
+from board import Edge, Hexagon, Vertex  # Add Hexagon and Vertex here
 import pygame
 import numpy as np
 import pickle
 import os
 import re
+import numpy as np
+
+Experience = namedtuple('Experience', ['state', 'action', 'next_state', 'reward', 'gameState', 'priority'])
 
 def builderEvalFn(currentGameState, currentPlayerIndex):
     currentPlayer = currentGameState.playerAgents[currentPlayerIndex]
@@ -219,7 +222,6 @@ class PlayerAgent(object):
             gameState.bank.update(ROAD_COST)  # Add resources back to the bank
             self.numRoads += 1
           
-
         elif action[0] is ACTIONS.CITY:
             if not self.canBuildCity():
                 raise Exception(f"Player {self.agentIndex} doesn't have enough resources to build a city!")
@@ -284,7 +286,6 @@ class PlayerAgent(object):
                     return (card_type, [])  # Return empty list if already at max roads
                 roads_built = []
                 for road_coords in card_action:
-                    print(road_coords)
                     if self.numRoads < MAX_ROADS:  # Change to < instead of <=
                         if self.buildRoad(road_coords, board, gameState):
                             roads_built.append(road_coords)
@@ -327,7 +328,8 @@ class PlayerAgent(object):
 
     def updateResources(self, diceRoll, board):
         newResources = Counter(board.getResourcesFromDieRollForPlayer(self.agentIndex, diceRoll))
-        self.resources += newResources
+        for resource, amount in newResources.items():
+            self.resources[resource] = max(0, self.resources[resource] + amount)
         return newResources
 
     def collectInitialResources(self, board):
@@ -391,7 +393,8 @@ class PlayerAgent(object):
             else:
                 break
 
-        self.resources -= discarded
+        for resource, amount in discarded.items():
+            self.resources[resource] = max(0, self.resources[resource] - amount)
         gameState.bank += discarded  # Add discarded resources back to the bank
         return discarded
 
@@ -406,7 +409,7 @@ class PlayerAgent(object):
         if not resources_list:
             return None
         resource = random.choice(resources_list)
-        victim.resources[resource] -= 1
+        victim.resources[resource] = max(0, victim.resources[resource] - 1)
         self.resources[resource] += 1
         return resource
 
@@ -1356,197 +1359,355 @@ class ValueFunctionPlayer(PlayerAgent):
         return value
 
 class QLearningAgent(PlayerAgent):
-    num_updates = 0
-
-    def __init__(self, name, agentIndex, color, alpha=0.1, gamma=0.9, epsilon=0.1):
+    def __init__(self, name, agentIndex, color, alpha=0.2, alpha_decay=0.9999, min_alpha=0.05, gamma=0.99, 
+             epsilon_start=0.3, epsilon_end=0.05, epsilon_decay=0.9995, buffer_size=100000, batch_size=64):
         super().__init__(name, agentIndex, color)
         self.alpha = alpha
+        self.alpha_decay = alpha_decay
+        self.min_alpha = min_alpha
         self.gamma = gamma
-        self.epsilon = epsilon
-        self.q_table, self.num_iterations = self.load_q_table()
+        self.epsilon = epsilon_start
+        self.epsilon_end = epsilon_end
+        self.epsilon_decay = epsilon_decay
+        self.q_table, self.iteration = self.load_q_table()
         self.default_q_value = 0.1
-
+        self.last_state = None
+        self.last_action = None
+        self.experience_buffer = []
+        self.buffer_size = buffer_size
+        self.batch_size = batch_size
+        self.visit_counts = Counter()
+        self.prune_threshold = 5
+        self.prune_frequency = 100
+    
     def get_state(self, gameState):
-        # Simplified state representation
         return (
-            tuple(self.resources.values()),
+            self.victoryPoints,
             len(self.settlements),
             len(self.cities),
             len(self.roads),
-            self.victoryPoints,
-            gameState.board.robber.hex.X,
-            gameState.board.robber.hex.Y
+            tuple(self.resources.values()),
+            gameState.playerAgents[1 - self.agentIndex].victoryPoints if gameState else 0,
+            gameState.board.robber.hex.X if gameState else 0,
+            gameState.board.robber.hex.Y if gameState else 0
         )
 
     def getAction(self, gameState):
         state = self.get_state(gameState)
         legal_actions = gameState.getLegalActions(self.agentIndex)
 
-        if random.random() < self.epsilon:
-            return 0, random.choice(legal_actions)
+        if not legal_actions:
+            return 0, (ACTIONS.PASS, None)
 
-        return 0, max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)))
+        if random.random() < self.epsilon:
+            action = random.choice(legal_actions)
+        else:
+            action = max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)) * 0.7 + 
+                        self.evaluate_win_likelihood(self.get_state(gameState.generateSuccessor(self.agentIndex, a))) * 0.3)
+
+        self.last_state = state
+        self.last_action = action
+        return 0, action
 
     def update(self, state, action, next_state, reward, gameState):
+        td_error = abs(reward + self.gamma * self.get_max_q_value(next_state) - self.get_q_value(state, action))
+        priority = (td_error + 0.01) ** 0.6
+
+        # Consider the opponent's likely next action
+        opponent_action = self.predict_opponent_action(gameState)
+        if opponent_action:
+            opponent_next_state = self.get_state(gameState.generateSuccessor(1 - self.agentIndex, opponent_action))
+            opponent_impact = self.evaluate_win_likelihood(opponent_next_state)
+            priority *= (1 + opponent_impact)  # Increase priority if the opponent's action is impactful
+
+        experience = Experience(state, action, next_state, reward, gameState, priority)
+        
+        if len(self.experience_buffer) < self.buffer_size:
+            self.experience_buffer.append(experience)
+        else:
+            index = np.random.randint(0, self.buffer_size)
+            self.experience_buffer[index] = experience
+        
+        self.perform_experience_replay()
+        self.visit_counts[state] += 1
+
+        # Prune Q-table periodically
+        if self.iteration % self.prune_frequency == 0:
+            self.prune_q_table()
+
+        self.alpha = max(self.alpha * self.alpha_decay, self.min_alpha)
+        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_end)
+    
+    def perform_experience_replay(self):
+        if len(self.experience_buffer) < self.batch_size:
+            return
+
+        priorities = np.array([exp.priority for exp in self.experience_buffer])
+        probabilities = priorities / np.sum(priorities)
+        
+        indices = np.random.choice(len(self.experience_buffer), size=self.batch_size, p=probabilities, replace=False)
+        batch = [self.experience_buffer[i] for i in indices]
+        
+        for experience in batch:
+            self.q_learning_update(experience.state, experience.action, experience.next_state, experience.reward, experience.gameState)
+    
+    def q_learning_update(self, state, action, next_state, reward, gameState):
         old_q = self.get_q_value(state, action)
-        next_max = max([self.get_q_value(next_state, self.make_action_hashable(a)) for a in gameState.getLegalActions(self.agentIndex)])
+        next_max = self.get_max_q_value(next_state)
+
+        # Adjust reward based on game outcome and VP difference
+        if gameState.gameOver() == self.agentIndex:
+            reward = 10000  # Huge reward for winning
+        elif gameState.gameOver() >= 0:
+            reward = -10000  # Huge penalty for losing
+        else:
+            vp_gain = next_state[0] - state[0]
+            opponent_vp = next_state[5]
+            vp_difference = next_state[0] - opponent_vp
+            reward = vp_gain * 100 + vp_difference * 50  # Increase emphasis on VP gain and difference
+
         new_q = (1 - self.alpha) * old_q + self.alpha * (reward + self.gamma * next_max)
         self.q_table[state][self.make_action_hashable(action)] = new_q
+    
+    def evaluate_win_likelihood(self, state):
+        my_vp = state[0]
+        opponent_vp = state[5]
+        vp_difference = my_vp - opponent_vp
+        
+        if my_vp >= 10:
+            return 1.0
+        elif opponent_vp >= 10:
+            return 0.0
+        else:
+            return (my_vp / 10.0) * 0.8 + (vp_difference / 10.0) * 0.2
+    
+    def get_max_q_value(self, state):
+        if state not in self.q_table:
+            return self.default_q_value
+        return max(self.q_table[state].values(), default=self.default_q_value)
 
-    def load_q_table(self):
-        q_table_files = [f for f in os.listdir() if f.startswith(f"q_table_player_{self.agentIndex}_") and f.endswith(".pkl")]
-        if q_table_files:
-            latest_file = max(q_table_files, key=lambda x: int(x.split('_')[-1].split('.')[0]))
-            iteration = int(latest_file.split('_')[-1].split('.')[0])
-            with open(latest_file, 'rb') as f:
-                return pickle.load(f), iteration
-        return {}, 0
+    def end_game_update(self, gameState):
+        if self.last_state and self.last_action:
+            final_state = self.get_state(gameState)
+            game_outcome = 1 if gameState.gameOver() == self.agentIndex else -1
+            reward = game_outcome * 100  # Large reward/penalty for winning/losing
+            self.update(self.last_state, self.last_action, final_state, reward, gameState)
+        self.iteration += 1
+        self.save_q_table()
 
     def save_q_table(self):
-        self.num_iterations += 1
-        filename = f"q_table_player_{self.agentIndex}_{self.num_iterations}.pkl"
+        filename = f"q_table_player_{self.agentIndex}.pkl"
+        data = {
+            'q_table': self.q_table,
+            'iteration': self.iteration
+        }
         with open(filename, 'wb') as f:
-            pickle.dump(self.q_table, f)
-        
-        # Remove the previous Q-table file
-        prev_filename = f"q_table_player_{self.agentIndex}_{self.num_iterations-1}.pkl"
-        if os.path.exists(prev_filename):
-            os.remove(prev_filename)
+            pickle.dump(data, f)
+        print(f"Updated Q-table for Player {self.agentIndex}, iteration {self.iteration}")
 
+    def load_q_table(self):
+        filename = f"q_table_player_{self.agentIndex}.pkl"
+        if os.path.exists(filename):
+            try:
+                with open(filename, 'rb') as f:
+                    data = pickle.load(f)
+                    return data['q_table'], data['iteration']
+            except (EOFError, pickle.UnpicklingError, KeyError):
+                print(f"Warning: Q-table file {filename} is corrupted or in old format. Starting with a new Q-table.")
+                os.remove(filename)
+        return {}, 0
+    
     def choose_initial_settlement(self, board):
-        if random.random() < 0.5:  # Higher epsilon for initial placements
-            return random.choice([v for v in board.getAllVertices() if v.canSettle])
-        
         best_value = float('-inf')
         best_vertex = None
-        for vertex in board.getAllVertices():
-            if vertex.canSettle:
-                # Create a simplified state representation
-                state = (
-                    tuple(self.resources.values()),
-                    len(self.settlements),
-                    len(self.cities),
-                    len(self.roads),
-                    self.victoryPoints,
-                    vertex.X,
-                    vertex.Y
-                )
-                value = self.get_q_value(state, (ACTIONS.SETTLE, (vertex.X, vertex.Y)))
-                if value > best_value:
-                    best_value = value
-                    best_vertex = vertex
+        valid_vertices = [v for v in board.getAllVertices() if v.canSettle]
+
+        for vertex in valid_vertices:
+            value = self.evaluate_settlement_spot(vertex, board)
+            value += random.uniform(0, 1)  # Add some randomness
+            if value > best_value:
+                best_value = value
+                best_vertex = vertex
         return best_vertex
 
     def choose_initial_road(self, vertex, board):
-        if random.random() < 0.5:  # Higher epsilon for initial placements
-            return random.choice([e for e in board.getEdgesOfVertex(vertex) if not e.isOccupied()])
-    
         best_value = float('-inf')
         best_edge = None
-        for edge in board.getEdgesOfVertex(vertex):
-            if not edge.isOccupied():
-                # Create a simplified state representation
-                state = (
-                    tuple(self.resources.values()),
-                    len(self.settlements),
-                    len(self.cities),
-                    len(self.roads),
-                    self.victoryPoints,
-                    edge.X,
-                    edge.Y
-                )
-                value = self.get_q_value(state, (ACTIONS.ROAD, (edge.X, edge.Y)))
-                if value > best_value:
-                    best_value = value
-                    best_edge = edge
+        valid_edges = [e for e in board.getEdgesOfVertex(vertex) if not e.isOccupied()]
+
+        for edge in valid_edges:
+            value = self.evaluate_road_spot(edge, board)
+            value += random.uniform(0, 1)  # Add some randomness
+            if value > best_value:
+                best_value = value
+                best_edge = edge
         return best_edge
+
+    def evaluate_settlement_spot(self, vertex, board):
+        hexes = board.getHexes(vertex)
+        value = 0
+        resource_types = set()
+        production_value = 0
+
+        for hex in hexes:
+            if hex.resource != ResourceTypes.NOTHING:
+                # Calculate production value (6 and 8 are most valuable)
+                probability_value = 6 - abs(7 - hex.diceValue)
+                production_value += probability_value
+                value += probability_value * 2
+
+                resource_types.add(hex.resource)
+
+                if hex.resource in [ResourceTypes.ORE, ResourceTypes.GRAIN]:
+                    value += 1  # Slightly favor resources needed for cities
+
+        # Reward resource variety
+        variety_bonus = len(resource_types) * 3
+        value += variety_bonus
+
+        # Significant bonus for being on three productive hexes
+        if len([h for h in hexes if h.resource != ResourceTypes.NOTHING]) == 3:
+            value += 10
+
+        # Penalty for being on the coast (less than 3 hexes)
+        if len(hexes) < 3:
+            value -= 5
+
+        # Consider potential for expansion
+        expandable_edges = sum(1 for edge in board.getEdgesOfVertex(vertex) if not edge.isOccupied())
+        value += expandable_edges * 2
+
+        # Store production value for potential city upgrades
+        vertex.production_value = production_value
+
+        return value
+
+    def evaluate_road_spot(self, edge, board):
+        value = 0
+        vertices = board.getVertexEnds(edge)
+
+        for vertex in vertices:
+            if vertex.canSettle:
+                settlement_value = self.evaluate_settlement_spot(vertex, board)
+                value += settlement_value * 0.5
+
+                # Extra value for roads leading to 3-hex spots
+                if len(board.getHexes(vertex)) == 3:
+                    value += 5
+
+        unexplored_vertices = sum(1 for v in vertices if not v.isOccupied() and v.canSettle)
+        value += unexplored_vertices * 3
+
+        # Check for connected roads
+        adjacent_edges = board.getEdgesOfVertex(vertices[0]) + board.getEdgesOfVertex(vertices[1])
+        connected_roads = sum(1 for adj_edge in adjacent_edges if adj_edge.isOccupied() and adj_edge.player == self.agentIndex)
+        value += connected_roads * 2
+
+        return value
 
     def choose_robber_placement(self, board):
         valid_hexes = board.get_valid_robber_hexes()
-        if not self.q_table:  # If Q-table is empty, choose randomly
-            return random.choice(valid_hexes)
-        
-        # Create a simplified state representation
-        state = (
-            tuple(self.resources.values()),
-            len(self.settlements),
-            len(self.cities),
-            len(self.roads),
-            self.victoryPoints,
-            board.robber.hex.X,
-            board.robber.hex.Y
-        )
-        
-        # Choose the hex with the highest Q-value
-        best_hex = max(valid_hexes, key=lambda h: self.q_table.get(state, {}).get((ACTIONS.MOVE_ROBBER, (h.X, h.Y)), 0))
-        return best_hex
+        return max(valid_hexes, key=lambda h: self.evaluate_robber_placement(h, board))
+
+    def evaluate_robber_placement(self, hex, board):
+        value = 0
+        for vertex in board.getVertices(hex):
+            if vertex.player is not None and vertex.player != self.agentIndex:
+                value += 10  # Bonus for blocking opponent
+            if vertex.player == self.agentIndex:
+                value -= 5  # Penalty for blocking self
+        return value + (6 - abs(7 - hex.diceValue))  # Consider hex productivity
 
     def discard_half_on_seven(self, gameState):
-        state = self.get_state(gameState)
         total_resources = sum(self.resources.values())
         if total_resources <= 7:
             return None
 
         discard_count = total_resources // 2
         discarded = Counter()
+        resource_values = self.calculate_resource_values()
 
         for _ in range(discard_count):
-            resource = max(self.resources.keys(), key=lambda r: self.q_table.get(state, {}).get((ACTIONS.DISCARD, r), 0))
+            resource = min(self.resources.keys(), key=lambda r: resource_values.get(r, 0) if self.resources[r] > 0 else float('inf'))
             discarded[resource] += 1
-            self.resources[resource] -= 1
+            self.resources[resource] = max(0, self.resources[resource] - 1)
 
         gameState.bank += discarded
         return discarded
+    
+    def calculate_resource_values(self):
+        values = {r: 0 for r in ResourceTypes if r != ResourceTypes.NOTHING}
+        if self.canSettle():
+            for r in SETTLEMENT_COST:
+                values[r] += 2
+        if self.canBuildCity():
+            for r in CITY_COST:
+                values[r] += 3
+        if len(self.roads) < MAX_ROADS:
+            for r in ROAD_COST:
+                values[r] += 1
+        return values
 
     def steal_resource(self, victim):
         if not victim.resources or sum(victim.resources.values()) == 0:
             return None
         
-        # Create a simplified state representation
+        # Use a simplified state representation that doesn't depend on gameState
         state = (
-            tuple(self.resources.values()),
+            self.victoryPoints,
             len(self.settlements),
             len(self.cities),
             len(self.roads),
-            self.victoryPoints,
-            tuple(victim.resources.values())  # Include victim's resources in the state
+            tuple(self.resources.values())
         )
         
-        if not self.q_table or state not in self.q_table:
-            # If Q-table is empty or state is not in Q-table, choose randomly
+        if state not in self.q_table or not victim.resources:
             resource = random.choice([r for r in victim.resources.keys() if victim.resources[r] > 0])
         else:
-            # Choose the resource with the highest Q-value
             resource = max(
                 [r for r in victim.resources.keys() if victim.resources[r] > 0],
                 key=lambda r: self.q_table[state].get((ACTIONS.STEAL, r), 0)
             )
         
-        victim.resources[resource] -= 1
+        victim.resources[resource] = max(0, victim.resources[resource] - 1)
         self.resources[resource] += 1
         return resource
     
     def get_q_value(self, state, action):
         if state not in self.q_table:
             self.q_table[state] = {}
-        
-        try:
-            hashable_action = self.make_action_hashable(action)
-        except Exception as e:
-            print(f"Warning: Could not make action hashable: {action}. Error: {e}")
-            return self.default_q_value
-
+        hashable_action = self.make_action_hashable(action)
         if hashable_action not in self.q_table[state]:
-            self.q_table[state][hashable_action] = self.default_q_value + random.uniform(0, 0.1)
+            self.q_table[state][hashable_action] = self.default_q_value
         return self.q_table[state][hashable_action]
-        
+
     def make_action_hashable(self, action):
         if isinstance(action, tuple):
-            return (action[0], self.make_action_hashable(action[1]))
+            return tuple(self.make_action_hashable(item) for item in action)
         elif isinstance(action, list):
             return tuple(self.make_action_hashable(item) for item in action)
+        elif isinstance(action, (Edge, Hexagon, Vertex)):
+            return (action.X, action.Y)
         else:
             return action
+    
+    def prune_q_table(self):
+        states_to_remove = [state for state, count in self.visit_counts.items() if count < self.prune_threshold]
+        for state in states_to_remove:
+            if state in self.q_table:
+                del self.q_table[state]
+            del self.visit_counts[state]
+        print(f"Pruned {len(states_to_remove)} states from Q-table")
+        self.save_q_table()  # Save the pruned Q-table
+
+    def predict_opponent_action(self, gameState):
+        opponent_index = 1 - self.agentIndex
+        opponent_actions = gameState.getLegalActions(opponent_index)
+        if not opponent_actions:
+            return None
+        
+        # Assume the opponent will take the action that gives them the most victory points
+        return max(opponent_actions, key=lambda a: gameState.generateSuccessor(opponent_index, a).playerAgents[opponent_index].victoryPoints)
 
 class LookAheadRolloutPlayer(PlayerAgent):
     # The rollout policy should draw the action from action distribution pi(s)

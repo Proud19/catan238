@@ -92,8 +92,6 @@ class GameState:
             
 
         legalActions.append((ACTIONS.PASS, None))
-        # print(legalActions)
-
         return legalActions
 
     def generateSuccessor(self, playerIndex, action):
@@ -210,7 +208,7 @@ class GameState:
             print(f"{self.largest_army_holder.name} now holds the Largest Army with {self.largest_army_holder.played_knights} knights played.")
 
 class Game:
-    def __init__(self, playerAgentNums=None):
+    def __init__(self, playerAgentNums=None, num_test_games=NUM_TEST_GAMES):
         if GRAPHICS: 
             pygame.init()
             self.screen_width = 1020
@@ -224,7 +222,6 @@ class Game:
         self.playerAgentNums = playerAgentNums 
         self.menu_state = "MAIN"  # Can be "MAIN", "GAME", or "WINNER"
         
-        
         if GRAPHICS: 
             self.load_images()
             self.init_menu()
@@ -232,7 +229,12 @@ class Game:
         # Initialize game-specific variables
         self.currentAgentIndex = 0
         self.turnNumber = 1
-    
+
+        self.num_test_games = num_test_games
+        self.test_results = {0: 0, 1: 0}  # To keep track of wins in test mode
+        
+        self.player_victory_points = {0: [], 1: []}
+
     def load_images(self):
         self.menu_bg = pygame.image.load("resources/menuScreen.gif").convert()
         self.menu_bg = pygame.transform.scale(self.menu_bg, (self.screen_width, self.screen_height))
@@ -491,6 +493,9 @@ class Game:
             self.drawGame()
 
     def run(self):
+        if TEST_MODE:
+            return self.run_test_mode()
+        
         if VERBOSE:
             print("WELCOME TO SETTLERS OF CATAN!")
             print("-----------------------------")
@@ -517,7 +522,7 @@ class Game:
                         self.menu_state = "WINNER"
                         for agent in self.gameState.playerAgents:
                             if isinstance(agent, QLearningAgent):
-                                agent.save_q_table()
+                                agent.save_q_table()  # Save Q-table at the end of each game
                         if TRAIN:
                             self.reset_game()
                             self.menu_state = "GAME"
@@ -554,9 +559,10 @@ class Game:
             pygame.quit()
         else: 
             while running: 
-                if self.gameState.gameOver() >= 0: 
+                if self.gameState.gameOver() >= 0:
                     for agent in self.gameState.playerAgents:
                         if isinstance(agent, QLearningAgent):
+                            agent.end_game_update(self.gameState)
                             agent.save_q_table()
                     if TRAIN:
                         self.reset_game()
@@ -573,7 +579,80 @@ class Game:
         if VERBOSE:
             print(f"{agentWinner.name} won the game")
         return winner, self.turnNumber, agentWinner.victoryPoints - agentLoser.victoryPoints
-    
+
+    def run_test_mode(self):
+        self.initializePlayers()
+        total_time = 0
+        start_time_all = time.time()
+
+        for game_num in range(self.num_test_games):
+            self.reset_game()
+            start_time = time.time()
+            while self.gameState.gameOver() < 0 and self.turnNumber <= CUTOFF_TURNS:
+                self.run_game_turn()
+            
+            end_time = time.time()
+            game_time = end_time - start_time
+            total_time += game_time
+            
+            winner = self.gameState.gameOver()
+            if winner >= 0:
+                self.test_results[winner] += 1
+                winner_type = type(self.gameState.playerAgents[winner]).__name__
+                loser = 1 - winner
+                winner_points = self.gameState.playerAgents[winner].victoryPoints
+                loser_points = self.gameState.playerAgents[loser].victoryPoints
+                
+                # Store the victory points for this game
+                self.player_victory_points[winner].append(winner_points)
+                self.player_victory_points[loser].append(loser_points)
+                
+                print(f"Game {game_num + 1}/{self.num_test_games} completed in {game_time:.2f} seconds. "
+                    f"Player {winner} ({winner_type}) won. Score: ({winner_points}-{loser_points})")
+            else:
+                player0_points = self.gameState.playerAgents[0].victoryPoints
+                player1_points = self.gameState.playerAgents[1].victoryPoints
+                
+                # Store the victory points for this game
+                self.player_victory_points[0].append(player0_points)
+                self.player_victory_points[1].append(player1_points)
+                
+                print(f"Game {game_num + 1}/{self.num_test_games} completed in {game_time:.2f} seconds. "
+                    f"No winner (reached turn limit). Score: ({player0_points}-{player1_points})")
+
+            # Update Q-table after each game if using QLearningAgent
+            for agent in self.gameState.playerAgents:
+                if isinstance(agent, QLearningAgent):
+                    agent.end_game_update(self.gameState)
+
+        end_time_all = time.time()
+        total_time_all = end_time_all - start_time_all
+
+        self.print_test_results(total_time, total_time_all)
+
+    def print_test_results(self, total_time, total_time_all):
+        total_games = sum(self.test_results.values())
+        print("\nTest Results:")
+        print("=" * 40)
+        for i, agent in enumerate(self.gameState.playerAgents):
+            agent_type = type(agent).__name__
+            wins = self.test_results[i]
+            win_rate = (wins / total_games) * 100
+            avg_vp = sum(self.player_victory_points[i]) / len(self.player_victory_points[i])
+            print(f"Player {i} ({agent_type}):")
+            print(f"  Wins: {wins}")
+            print(f"  Win Rate: {win_rate:.2f}%")
+            print(f"  Average Victory Points: {avg_vp:.2f}")
+        print("=" * 40)
+        print(f"Total Games: {total_games}")
+        print(f"Total Game Time: {total_time:.2f} seconds")
+        print(f"Average Game Time: {total_time/total_games:.2f} seconds")
+        print(f"Total Test Time (including setup): {total_time_all:.2f} seconds")
+        
+        overall_winner = max(self.test_results, key=self.test_results.get)
+        winner_type = type(self.gameState.playerAgents[overall_winner]).__name__
+        print(f"\nOverall Winner: Player {overall_winner} ({winner_type}) with {self.test_results[overall_winner]} wins")
+
     def run_game_turn(self):
         if GRAPHICS and not hasattr(self, 'draw'):
             self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
@@ -663,7 +742,7 @@ class Game:
 
             # Distribute the resources
             if initial_resources:
-                can_fulfill = all(self.gameState.bank[resource] >= amount for resource, amount in initial_resources.items())
+                can_fulfill = all(self .gameState.bank[resource] >= amount for resource, amount in initial_resources.items())
                 if can_fulfill:
                     for resource, amount in initial_resources.items():
                         self.gameState.bank[resource] -= amount
@@ -689,23 +768,20 @@ def getStringForPlayer(playerCode):
     return playerTypes.get(playerCode, "Not a player.")
 
 def getPlayerAgentSpecifications():
-    if VERBOSE:
-        print("Player Agent Specifications:")
-        print("-----------------------------")
-        for i, agent in enumerate([
-            "Random Agent",
-            "Human Player",
-            "Expectimax Agent",
-            "Value Function Player",
-            "Q-Learning Agent"
-        ]):
-            print(f"{i}: {agent}")
+    print("Player Agent Specifications:")
+    print("-----------------------------")
+    for i, agent in enumerate([
+        "Random Agent",
+        "Human Player",
+        "Expectimax Agent",
+        "Value Function Player",
+        "Q-Learning Agent"
+    ]):
+        print(f"{i}: {agent}")
 
-        firstPlayerAgent = int(input("Which player type should the first player be: ").strip())
-        secondPlayerAgent = int(input("Which player type should the second player be: ").strip())
-        return [firstPlayerAgent, secondPlayerAgent]
-    else:
-        return DEFAULT_PLAYER_ARRAY
+    firstPlayerAgent = int(input("Which player type should the first player be: ").strip())
+    secondPlayerAgent = int(input("Which player type should the second player be: ").strip())
+    return [firstPlayerAgent, secondPlayerAgent]
     
 
 
@@ -739,29 +815,35 @@ def run_simulations(n):
     
 
 if __name__ == "__main__":
-    # Set up argument parser
-    parser = argparse.ArgumentParser(description="Run game simulations or a single game.")
-    parser.add_argument(
-        "-s", "--simulation-type",
-        type=str,
-        choices=["random"],  # Add more simulation types as needed
-        help="The type of simulation to run (e.g., 'random')."
-    )
-    parser.add_argument(
-        "-n", "--num-simulations",
-        type=int,
-        help="The number of simulations to run."
-    )
-
-    # Parse the command-line arguments
-    args = parser.parse_args()
-
-    # Conditional execution
-    if args.simulation_type and args.num_simulations:
-        # Run simulations if both arguments are provided
-        run_simulations(args.num_simulations)
-    else:
-        # Run a single game otherwise
-        print("\nRunning a single game...")
-        game = Game()
+    if TEST_MODE:
+        playerAgentNums = getPlayerAgentSpecifications()
+        num_games = int(input("Enter the number of games to simulate: "))
+        game = Game(playerAgentNums=playerAgentNums, num_test_games=num_games)
         game.run()
+    else:
+        # Set up argument parser
+        parser = argparse.ArgumentParser(description="Run game simulations or a single game.")
+        parser.add_argument(
+            "-s", "--simulation-type",
+            type=str,
+            choices=["random"],  # Add more simulation types as needed
+            help="The type of simulation to run (e.g., 'random')."
+        )
+        parser.add_argument(
+            "-n", "--num-simulations",
+            type=int,
+            help="The number of simulations to run."
+        )
+
+        # Parse the command-line arguments
+        args = parser.parse_args()
+
+        # Conditional execution
+        if args.simulation_type and args.num_simulations:
+            # Run simulations if both arguments are provided
+            run_simulations(args.num_simulations)
+        else:
+            # Run a single game otherwise
+            print("\nRunning a single game...")
+            game = Game()
+            game.run()
