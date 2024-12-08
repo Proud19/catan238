@@ -180,8 +180,10 @@ class GameState:
                     print(f"{moving_player.name} stole a {stolen_resource.name} from {victim.name}")
                 else:
                     print(f"{moving_player.name} attempted to steal from {victim.name}, but they had no resources")
+            return victim
         elif VERBOSE:
             print(f"No players to steal from at the new robber location")
+        return None
     
     def checkLargestArmy(self):
         players_with_3_plus_knights = [player for player in self.playerAgents if player.played_knights >= LARGEST_ARMY_REQUIREMENT]
@@ -312,6 +314,7 @@ class Game:
             1: lambda name, index, color: PlayerAgentHuman(name, index, color), 
             2: lambda name, index, color: PlayerAgentExpectimax(name, index, color),
             3: lambda name, index, color: ValueFunctionPlayer(name, index, color),
+            4: lambda name, index, color: QLearningAgent(name, index, color),
         }
 
         return playerTypes.get(playerCode, PlayerAgentRandom)(playerName, index, color)
@@ -333,8 +336,11 @@ class Game:
                 vertex = self.gameState.board.getHumanVertexForSettlement()
             elif isinstance(agent, PlayerAgentRandom):
                 vertex = self.gameState.board.getRandomVertexForSettlement()
-            elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer)):
+            elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer, QLearningAgent)):
                 vertex = agent.choose_initial_settlement(self.gameState.board)
+            else:
+                # Default to random selection if agent type is unknown
+                vertex = self.gameState.board.getRandomVertexForSettlement()
             
             self.gameState.board.applyAction(i, (ACTIONS.SETTLE, vertex))
             agent.settlements.extend([vertex])
@@ -347,8 +353,11 @@ class Game:
                 road = self.gameState.board.getHumanRoad(vertex)
             elif isinstance(agent, PlayerAgentRandom):
                 road = self.gameState.board.getRandomRoad(vertex)
-            elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer)):
+            elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer, QLearningAgent)):
                 road = agent.choose_initial_road(vertex, self.gameState.board)
+            else:
+                # Default to random selection if agent type is unknown
+                road = self.gameState.board.getRandomRoad(vertex)
             
             self.gameState.board.applyAction(i, (ACTIONS.ROAD, road))
             agent.roads.extend([road])
@@ -448,6 +457,10 @@ class Game:
         if VERBOSE:
             print("A 7 was rolled! Moving the robber...")
 
+        if isinstance(current_player, QLearningAgent):
+            old_state = current_player.get_state(self.gameState)
+            old_score = current_player.victoryPoints
+
         # First, handle discarding
         for player in self.gameState.playerAgents:
             discarded = player.discard_half_on_seven(self.gameState)
@@ -457,7 +470,22 @@ class Game:
 
         # Now, move the robber and steal
         new_hex = current_player.choose_robber_placement(self.gameState.board)
-        self.gameState.move_robber_and_steal(current_player, new_hex)
+        victim = self.gameState.move_robber_and_steal(current_player, new_hex)
+
+        if isinstance(current_player, QLearningAgent):
+            new_state = current_player.get_state(self.gameState)
+            reward = current_player.victoryPoints - old_score
+            
+            # Update Q-value for moving the robber
+            current_player.update(old_state, (ACTIONS.MOVE_ROBBER, (new_hex.X, new_hex.Y)), new_state, reward, self.gameState)
+            
+            # If a resource was stolen, update Q-value for stealing
+            if victim and sum(victim.resources.values()) > 0:
+                stolen_resource = current_player.steal_resource(victim)
+                if stolen_resource:
+                    new_state = current_player.get_state(self.gameState)
+                    reward = 1  # You can adjust this reward as needed
+                    current_player.update(old_state, (ACTIONS.STEAL, stolen_resource), new_state, reward, self.gameState)
 
         if GRAPHICS:
             self.drawGame()
@@ -467,9 +495,7 @@ class Game:
             print("WELCOME TO SETTLERS OF CATAN!")
             print("-----------------------------")
 
-
         self.initializePlayers()
-        #self.initializeSettlementsAndResourcesLumberBrick()
         running = True
 
         if GRAPHICS: 
@@ -489,6 +515,12 @@ class Game:
                 elif self.menu_state == "GAME":
                     if self.gameState.gameOver() >= 0:
                         self.menu_state = "WINNER"
+                        for agent in self.gameState.playerAgents:
+                            if isinstance(agent, QLearningAgent):
+                                agent.save_q_table()
+                        if TRAIN:
+                            self.reset_game()
+                            self.menu_state = "GAME"
                     elif not AUTORUN:
                         self.drawGame()
                         waiting_for_input = True
@@ -513,8 +545,8 @@ class Game:
                             running = False
                         elif event.type == pygame.MOUSEBUTTONDOWN:
                             if self.start_button.collidepoint(event.pos):
-                                self.menu_state = "MAIN"
                                 self.reset_game()
+                                self.menu_state = "GAME"
 
                 pygame.display.flip()
                 self.clock.tick(60)
@@ -523,8 +555,14 @@ class Game:
         else: 
             while running: 
                 if self.gameState.gameOver() >= 0: 
-                    running = False
-                    break
+                    for agent in self.gameState.playerAgents:
+                        if isinstance(agent, QLearningAgent):
+                            agent.save_q_table()
+                    if TRAIN:
+                        self.reset_game()
+                    else:
+                        running = False
+                        break
                 self.run_game_turn()
 
         winner = self.gameState.gameOver()
@@ -541,6 +579,9 @@ class Game:
             self.draw = Draw(self.gameState.board.tiles, self.screen, self.gameState.board)
 
         currentAgent = self.gameState.playerAgents[self.currentAgentIndex]
+        old_state = currentAgent.get_state(self.gameState) if isinstance(currentAgent, QLearningAgent) else None
+        old_score = currentAgent.victoryPoints
+
         if VERBOSE:
             print(f"---------- TURN {self.turnNumber} --------------")
             print(f"It's {currentAgent.name}'s turn!")
@@ -570,7 +611,6 @@ class Game:
 
             if action[0] == ACTIONS.PLAY_DEV_CARD:
                 card_type, card_action = action[1]
-
                 # Apply the action
                 self.gameState.applyAction(self.currentAgentIndex, action)
             else:
@@ -587,6 +627,12 @@ class Game:
         self.gameState.checkLargestArmy()
         currentAgent.endTurn()
         self.moveHistory.append((currentAgent.name, actions_taken))
+        
+        if isinstance(currentAgent, QLearningAgent):
+            new_state = currentAgent.get_state(self.gameState)
+            reward = currentAgent.victoryPoints - old_score
+            currentAgent.update(old_state, action, new_state, reward, self.gameState)
+
         self.currentAgentIndex = (self.currentAgentIndex + 1) % self.gameState.getNumPlayerAgents()
         self.turnNumber += 1
 
@@ -632,13 +678,13 @@ class Game:
                     print(f"No initial resources collected for {agent.name}")
         
 
-
 def getStringForPlayer(playerCode):
     playerTypes = {
         0: "Random Agent",
         1: "Human Player",
         2: "Expectimax Agent",
-        3: "Value Function Player"
+        3: "Value Function Player",
+        4: "Q-Learning Agent"
     }
     return playerTypes.get(playerCode, "Not a player.")
 
@@ -650,12 +696,13 @@ def getPlayerAgentSpecifications():
             "Random Agent",
             "Human Player",
             "Expectimax Agent",
-            "Value Function Player"
+            "Value Function Player",
+            "Q-Learning Agent"
         ]):
             print(f"{i}: {agent}")
 
         firstPlayerAgent = int(input("Which player type should the first player be: ").strip())
-        secondPlayerAgent = int(input("Which player type should the second player be: "). strip())
+        secondPlayerAgent = int(input("Which player type should the second player be: ").strip())
         return [firstPlayerAgent, secondPlayerAgent]
     else:
         return DEFAULT_PLAYER_ARRAY

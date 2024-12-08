@@ -5,6 +5,7 @@ GRAPHICS = True
 VERBOSE = True
 DEBUG = False
 AUTORUN = True
+TRAIN = True
 
 def getColorForPlayer(player):
     return {
@@ -43,6 +44,9 @@ class ACTIONS(Enum):
     BUY_DEV_CARD = 6
     PLAY_KNIGHT = 7
     PLAY_DEV_CARD = 8
+    MOVE_ROBBER = 9
+    DISCARD = 10
+    STEAL = 11
 
 class ResourceTypes(Enum):
     BRICK = 1
