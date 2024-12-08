@@ -324,6 +324,7 @@ class Game:
             2: lambda name, index, color: PlayerAgentExpectimax(name, index, color),
             3: lambda name, index, color: ValueFunctionPlayer(name, index, color),
             4: lambda name, index, color: QLearningAgent(name, index, color),
+            5: lambda name, index, color: LookAheadRolloutPlayer(name, index, color)
         }
 
         return playerTypes.get(playerCode, PlayerAgentRandom)(playerName, index, color)
@@ -345,8 +346,8 @@ class Game:
                 vertex = self.gameState.board.getHumanVertexForSettlement()
             elif isinstance(agent, PlayerAgentRandom):
                 vertex = self.gameState.board.getRandomVertexForSettlement()
-            elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer, QLearningAgent)):
-                vertex = agent.choose_initial_settlement(self.gameState.board)
+            # elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer, QLearningAgent)):
+            #     vertex = agent.choose_initial_settlement(self.gameState.board)
             else:
                 # Default to random selection if agent type is unknown
                 vertex = self.gameState.board.getRandomVertexForSettlement()
@@ -770,7 +771,8 @@ def getStringForPlayer(playerCode):
         1: "Human Player",
         2: "Expectimax Agent",
         3: "Value Function Player",
-        4: "Q-Learning Agent"
+        4: "Q-Learning Agent",
+        5: "Rollout Player"
     }
     return playerTypes.get(playerCode, "Not a player.")
 
@@ -782,7 +784,8 @@ def getPlayerAgentSpecifications():
         "Human Player",
         "Expectimax Agent",
         "Value Function Player",
-        "Q-Learning Agent"
+        "Q-Learning Agent", 
+        "Rollout Player"
     ]):
         print(f"{i}: {agent}")
 

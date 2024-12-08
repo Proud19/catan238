@@ -1115,6 +1115,9 @@ DEFAULT_WEIGHTS = {
     "discard_penalty": -5,
     "hand_devs": 10,
     "army_size": 10.1,
+    # When to win
+    "winning": 1e10, 
+    "losing": -1e9
 }
 
 # Change these to play around with new values
@@ -1271,6 +1274,7 @@ class ValueFunctionPlayer(PlayerAgent):
         self.value_fn_builder_name = (
             "base_fn"
         )
+        self.value_fn = get_value_fn(self.value_fn_builder_name, self.params)
 
     def getAction(self, state):
         # In our code rn, self.epsilon is always None
@@ -1284,8 +1288,7 @@ class ValueFunctionPlayer(PlayerAgent):
                 continue 
             
             successor = state.generateSuccessor(self.agentIndex, action)
-            value_fn = get_value_fn(self.value_fn_builder_name, self.params)
-            value = value_fn(successor, self.agentIndex)
+            value = self.value_fn(successor, self.agentIndex)
            
             if value > best_value:
                 best_value = value
@@ -1776,17 +1779,80 @@ class QLearningAgent(PlayerAgent):
         print(f"Pruned {len(states_to_remove)} states from Q-table")
         self.save_q_table()  # Save the pruned Q-table
 
-class LookAheadRolloutPlayer(PlayerAgent):
-    # The rollout policy should draw the action from action distribution pi(s)
-    # To produce rollout simulartions, we need to use a generative model 
-    # that generates s' from T(s' | s, a); this is actually deterministic in our case.
 
-    def __init__(self, name, agentIndex, color, depth=1, rollout_policy=None, value_fn_builder_name=("base_fn")):
-        super(LookAheadRolloutPlayer, self).__init__(name, agentIndex, color)
+    def predict_opponent_action(self, gameState):
+        opponent_index = 1 - self.agentIndex
+        opponent_actions = gameState.getLegalActions(opponent_index)
+        if not opponent_actions:
+            return None
+        
+        # Assume the opponent will take the action that gives them the most victory points
+        return max(opponent_actions, key=lambda a: gameState.generateSuccessor(opponent_index, a).playerAgents[opponent_index].victoryPoints)
+
+class LookAheadRolloutPlayer(ValueFunctionPlayer):
+    def __init__(self, name, agentIndex, color, depth=4, value_fn_builder_name=None):
+        super().__init__(name, agentIndex, color, depth, value_fn_builder_name)
         self.depth = depth
-        self.rollout_policy = rollout_policy
-        self.value_fn_builder_name = value_fn_builder_name
+        self.value_fn = get_value_fn(self.value_fn_builder_name, self.params)
 
-        # Random policy
-        if rollout_policy is None:
-            self.pi = lambda state: random.choice(state.getLegalActions(self.agentIndex))
+    
+    def getAction(self, state):
+        # In our code rn, self.epsilon is always None
+        if self.epsilon is not None and random.random() < self.epsilon:
+            return random.choice(state.getLegalActions(self.agentIndex))
+
+        best_value = float("-inf")
+        best_action = None
+        for action in state.getLegalActions(self.agentIndex):
+            if action[0] == ACTIONS.PASS:  # remove pass action from possible actions
+                continue 
+            
+            value = self.rollout(state, action, self.depth)
+        
+            if value > best_value:
+                best_value = value
+                best_action = action
+        return 0 if not best_action else best_value, best_action if best_action else (ACTIONS.PASS, None)
+
+
+    def rollout_policy(self, state, i):
+        return random.choice(state.getLegalActions(i))
+
+    def rollout(self, state, initial_action, depth):
+
+        value = 0
+        num_turns = 0
+        tookinitialaction = False
+        successor = state
+
+        for _ in range(depth):
+            my_action = initial_action if not tookinitialaction else self.rollout_policy(successor, self.agentIndex)
+            tookinitialaction = True
+            successor = successor.generateSuccessor(self.agentIndex, my_action)
+            value += self.value_fn(successor, self.agentIndex)
+
+            if successor.gameOver() >= 0:
+                if successor.gameOver() == self.agentIndex:
+                    return DEFAULT_WEIGHTS["winning"]
+
+            opponent_index = 1 - self.agentIndex
+            opponent_action = self.rollout_policy(successor, opponent_index)
+            successor = successor.generateSuccessor(opponent_index, opponent_action)
+
+            if successor.gameOver() >= 0:
+                return DEFAULT_WEIGHTS["losing"]
+
+            value += self.value_fn(successor, self.agentIndex)
+            num_turns += 2
+        
+        if num_turns > 0: 
+            return value / num_turns
+        return value
+
+
+        
+
+
+
+    
+        
