@@ -23,6 +23,7 @@ class GameState:
         self.dev_card_deck = DEV_CARD_DECK.copy()
         random.shuffle(self.dev_card_deck)
         self.largest_army_holder = None
+        self.last_actions = [None, None]  # Store last action for each player
 
     def deepCopy(self):
         copy = GameState()
@@ -152,7 +153,11 @@ class GameState:
         self.board.applyAction(playerIndex, action)
         if action[0] == ACTIONS.ROAD:
             self.playerAgents[playerIndex].updateLongestRoad(self.board, self)
+        self.last_actions[playerIndex] = action
         return result
+    
+    def getLastAction(self, agentIndex):
+        return self.last_actions[agentIndex]
 
     def format_bank_resources(self):
         return ', '.join([f"{ResourceDict[resource]}: {count}" for resource, count in self.bank.items()])
@@ -297,6 +302,8 @@ class Game:
                 if VERBOSE and DEBUG:
                     print("Setting draw for human agent")
                 self.gameState.playerAgents[i].set_draw(self.draw)
+        
+        self.gameState.last_actions = [None, None]
 
 
     def drawGame(self):
