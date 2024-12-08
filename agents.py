@@ -1379,6 +1379,7 @@ class QLearningAgent(PlayerAgent):
         self.visit_counts = Counter()
         self.prune_threshold = 5
         self.prune_frequency = 100
+        self.opponent_model = {}
     
     def get_state(self, gameState):
         return (
@@ -1389,7 +1390,15 @@ class QLearningAgent(PlayerAgent):
             tuple(self.resources.values()),
             gameState.playerAgents[1 - self.agentIndex].victoryPoints if gameState else 0,
             gameState.board.robber.hex.X if gameState else 0,
-            gameState.board.robber.hex.Y if gameState else 0
+            gameState.board.robber.hex.Y if gameState else 0,
+            self.hasLongestRoad,
+            self.has_largest_army,
+            len(self.dev_cards),
+            gameState.bank[ResourceTypes.BRICK] if gameState else 0,
+            gameState.bank[ResourceTypes.LUMBER] if gameState else 0,
+            gameState.bank[ResourceTypes.ORE] if gameState else 0,
+            gameState.bank[ResourceTypes.GRAIN] if gameState else 0,
+            gameState.bank[ResourceTypes.WOOL] if gameState else 0,
         )
 
     def getAction(self, gameState):
@@ -1402,8 +1411,14 @@ class QLearningAgent(PlayerAgent):
         if random.random() < self.epsilon:
             action = random.choice(legal_actions)
         else:
-            action = max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)) * 0.7 + 
-                        self.evaluate_win_likelihood(self.get_state(gameState.generateSuccessor(self.agentIndex, a))) * 0.3)
+            opponent_action = self.predict_opponent_action(gameState)
+            if opponent_action:
+                action = max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)) * 0.7 + 
+                            self.evaluate_win_likelihood(self.get_state(gameState.generateSuccessor(self.agentIndex, a))) * 0.3 -
+                            self.evaluate_opponent_impact(gameState, a, opponent_action) * 0.2)
+            else:
+                action = max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)) * 0.7 + 
+                            self.evaluate_win_likelihood(self.get_state(gameState.generateSuccessor(self.agentIndex, a))) * 0.3)
 
         self.last_state = state
         self.last_action = action
@@ -1437,6 +1452,67 @@ class QLearningAgent(PlayerAgent):
 
         self.alpha = max(self.alpha * self.alpha_decay, self.min_alpha)
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_end)
+
+        # Update opponent model
+        self.update_opponent_model(gameState)
+
+    def update_opponent_model(self, gameState):
+        opponent_index = 1 - self.agentIndex
+        opponent_state = self.get_opponent_state(gameState)
+        opponent_action = gameState.getLastAction(opponent_index)
+        
+        if opponent_action is None:
+            return  # No action to update
+
+        if opponent_state not in self.opponent_model:
+            self.opponent_model[opponent_state] = {}
+        
+        hashable_action = self.make_action_hashable(opponent_action)
+        
+        if hashable_action not in self.opponent_model[opponent_state]:
+            self.opponent_model[opponent_state][hashable_action] = 0
+        
+        self.opponent_model[opponent_state][hashable_action] += 1
+
+    def get_opponent_state(self, gameState):
+        opponent = gameState.playerAgents[1 - self.agentIndex]
+        return (
+            opponent.victoryPoints,
+            len(opponent.settlements),
+            len(opponent.cities),
+            len(opponent.roads),
+            tuple(opponent.resources.values()),
+        )
+
+    def predict_opponent_action(self, gameState):
+        opponent_state = self.get_opponent_state(gameState)
+        if opponent_state in self.opponent_model:
+            legal_actions = gameState.getLegalActions(1 - self.agentIndex)
+            valid_actions = [action for action in self.opponent_model[opponent_state].keys() if action in legal_actions]
+            if valid_actions:
+                return max(valid_actions, key=lambda a: self.opponent_model[opponent_state][a])
+        return None
+
+    def evaluate_opponent_impact(self, gameState, our_action, opponent_action):
+        # Simulate the game state after our action
+        next_state = gameState.generateSuccessor(self.agentIndex, our_action)
+        
+        # Check if the opponent action is valid
+        if opponent_action is None or not next_state.getLegalActions(1 - self.agentIndex):
+            # If there's no valid opponent action, just evaluate the state after our action
+            return next_state.playerAgents[self.agentIndex].victoryPoints - gameState.playerAgents[self.agentIndex].victoryPoints
+        
+        try:
+            # Simulate the opponent's action
+            final_state = next_state.generateSuccessor(1 - self.agentIndex, opponent_action)
+            
+            # Evaluate the impact on our victory points
+            vp_impact = final_state.playerAgents[self.agentIndex].victoryPoints - gameState.playerAgents[self.agentIndex].victoryPoints
+            return vp_impact
+        except Exception as e:
+            # If an error occurs (e.g., invalid action), just return the impact of our action
+            print(f"Error evaluating opponent impact: {e}")
+            return next_state.playerAgents[self.agentIndex].victoryPoints - gameState.playerAgents[self.agentIndex].victoryPoints
     
     def perform_experience_replay(self):
         if len(self.experience_buffer) < self.batch_size:
@@ -1699,15 +1775,6 @@ class QLearningAgent(PlayerAgent):
             del self.visit_counts[state]
         print(f"Pruned {len(states_to_remove)} states from Q-table")
         self.save_q_table()  # Save the pruned Q-table
-
-    def predict_opponent_action(self, gameState):
-        opponent_index = 1 - self.agentIndex
-        opponent_actions = gameState.getLegalActions(opponent_index)
-        if not opponent_actions:
-            return None
-        
-        # Assume the opponent will take the action that gives them the most victory points
-        return max(opponent_actions, key=lambda a: gameState.generateSuccessor(opponent_index, a).playerAgents[opponent_index].victoryPoints)
 
 class LookAheadRolloutPlayer(PlayerAgent):
     # The rollout policy should draw the action from action distribution pi(s)
