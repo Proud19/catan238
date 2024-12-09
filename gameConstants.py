@@ -5,9 +5,9 @@ GRAPHICS = True
 VERBOSE = False
 DEBUG = False
 AUTORUN = True #Set to True for Human Mode
-TRAIN = False
+TRAIN = True
 
-TEST_MODE = False
+TEST_MODE = True
 NUM_TEST_GAMES = 100
 
 def getColorForPlayer(player):

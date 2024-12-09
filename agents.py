@@ -1391,17 +1391,15 @@ class QLearningAgent(PlayerAgent):
             len(self.cities),
             len(self.roads),
             tuple(self.resources.values()),
-            gameState.playerAgents[1 - self.agentIndex].victoryPoints if gameState else 0,
-            gameState.board.robber.hex.X if gameState else 0,
-            gameState.board.robber.hex.Y if gameState else 0,
+            gameState.playerAgents[1 - self.agentIndex].victoryPoints,
+            gameState.board.robber.hex.X,
+            gameState.board.robber.hex.Y,
             self.hasLongestRoad,
             self.has_largest_army,
             len(self.dev_cards),
-            gameState.bank[ResourceTypes.BRICK] if gameState else 0,
-            gameState.bank[ResourceTypes.LUMBER] if gameState else 0,
-            gameState.bank[ResourceTypes.ORE] if gameState else 0,
-            gameState.bank[ResourceTypes.GRAIN] if gameState else 0,
-            gameState.bank[ResourceTypes.WOOL] if gameState else 0,
+            sum(gameState.bank.values()),  # Total resources in the bank
+            self.longestRoadLength,
+            gameState.playerAgents[1 - self.agentIndex].longestRoadLength,
         )
 
     def getAction(self, gameState):
@@ -1414,14 +1412,7 @@ class QLearningAgent(PlayerAgent):
         if random.random() < self.epsilon:
             action = random.choice(legal_actions)
         else:
-            opponent_action = self.predict_opponent_action(gameState)
-            if opponent_action:
-                action = max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)) * 0.7 + 
-                            self.evaluate_win_likelihood(self.get_state(gameState.generateSuccessor(self.agentIndex, a))) * 0.3 -
-                            self.evaluate_opponent_impact(gameState, a, opponent_action) * 0.2)
-            else:
-                action = max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)) * 0.7 + 
-                            self.evaluate_win_likelihood(self.get_state(gameState.generateSuccessor(self.agentIndex, a))) * 0.3)
+            action = max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)))
 
         self.last_state = state
         self.last_action = action
@@ -1530,20 +1521,35 @@ class QLearningAgent(PlayerAgent):
         for experience in batch:
             self.q_learning_update(experience.state, experience.action, experience.next_state, experience.reward, experience.gameState)
     
+    def calculate_reward(self, old_state, new_state, gameState):
+        reward = 0
+        if new_state[0] > old_state[0]:  # Victory points increased
+            reward += 100
+        if new_state[1] > old_state[1]:  # Built a settlement
+            reward += 50
+        if new_state[2] > old_state[2]:  # Built a city
+            reward += 75
+        if new_state[3] > old_state[3]:  # Built a road
+            reward += 25
+        if new_state[8] and not old_state[8]:  # Got longest road
+            reward += 200
+        if new_state[9] and not old_state[9]:  # Got largest army
+            reward += 200
+        return reward
+    
     def q_learning_update(self, state, action, next_state, reward, gameState):
         old_q = self.get_q_value(state, action)
         next_max = self.get_max_q_value(next_state)
 
-        # Adjust reward based on game outcome and VP difference
         if gameState.gameOver() == self.agentIndex:
-            reward = 10000  # Huge reward for winning
+            reward = 1000  # Huge reward for winning
         elif gameState.gameOver() >= 0:
-            reward = -10000  # Huge penalty for losing
+            reward = -1000  # Huge penalty for losing
         else:
             vp_gain = next_state[0] - state[0]
             opponent_vp = next_state[5]
             vp_difference = next_state[0] - opponent_vp
-            reward = vp_gain * 100 + vp_difference * 50  # Increase emphasis on VP gain and difference
+            reward = vp_gain * 100 + vp_difference * 50
 
         new_q = (1 - self.alpha) * old_q + self.alpha * (reward + self.gamma * next_max)
         self.q_table[state][self.make_action_hashable(action)] = new_q
@@ -1696,7 +1702,7 @@ class QLearningAgent(PlayerAgent):
             if vertex.player == self.agentIndex:
                 value -= 5  # Penalty for blocking self
         return value + (6 - abs(7 - hex.diceValue))  # Consider hex productivity
-
+    
     def discard_half_on_seven(self, gameState):
         total_resources = sum(self.resources.values())
         if total_resources <= 7:
@@ -1848,11 +1854,3 @@ class LookAheadRolloutPlayer(ValueFunctionPlayer):
         if num_turns > 0: 
             return value / num_turns
         return value
-
-
-        
-
-
-
-    
-        

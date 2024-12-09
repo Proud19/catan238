@@ -64,6 +64,7 @@ class GameState:
 
         if agent.canBuyDevCard(self):
             legalActions.append((ACTIONS.BUY_DEV_CARD, None))
+        
         for card in agent.dev_cards:
             if card.can_be_used and not card.has_been_used:
                 if card.type == DevCardTypes.KNIGHT:
@@ -346,8 +347,8 @@ class Game:
                 vertex = self.gameState.board.getHumanVertexForSettlement()
             elif isinstance(agent, PlayerAgentRandom):
                 vertex = self.gameState.board.getRandomVertexForSettlement()
-            # elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer, QLearningAgent)):
-            #     vertex = agent.choose_initial_settlement(self.gameState.board)
+            elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer, QLearningAgent)):
+                vertex = agent.choose_initial_settlement(self.gameState.board)
             else:
                 # Default to random selection if agent type is unknown
                 vertex = self.gameState.board.getRandomVertexForSettlement()
