@@ -1796,7 +1796,7 @@ class QLearningAgent(PlayerAgent):
         return max(opponent_actions, key=lambda a: gameState.generateSuccessor(opponent_index, a).playerAgents[opponent_index].victoryPoints)
 
 class LookAheadRolloutPlayer(ValueFunctionPlayer):
-    def __init__(self, name, agentIndex, color, depth=4, value_fn_builder_name=None):
+    def __init__(self, name, agentIndex, color, depth=10, value_fn_builder_name=None):
         super().__init__(name, agentIndex, color, depth, value_fn_builder_name)
         self.depth = depth
         self.value_fn = get_value_fn(self.value_fn_builder_name, self.params)

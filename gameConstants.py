@@ -2,12 +2,12 @@ from enum import Enum
 from collections import Counter
 
 GRAPHICS = True
-VERBOSE = False
+VERBOSE = True #Set to True for Human Mode
 DEBUG = False
 AUTORUN = True #Set to True for Human Mode
-TRAIN = True
+TRAIN = False #Set to False for Human Mode/True for Testing
 
-TEST_MODE = True
+TEST_MODE = False #Set to False for Human Mode/True for Testing
 NUM_TEST_GAMES = 100
 
 def getColorForPlayer(player):
