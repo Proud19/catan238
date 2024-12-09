@@ -574,7 +574,6 @@ class Game:
                     for agent in self.gameState.playerAgents:
                         if isinstance(agent, QLearningAgent):
                             agent.end_game_update(self.gameState)
-                            agent.save_q_table()
                     if TRAIN:
                         self.reset_game()
                     else:

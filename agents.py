@@ -905,22 +905,20 @@ class PlayerAgentExpectimax(PlayerAgent):
         return super().discard_half_on_seven(gameState)
     
     def choose_initial_settlement(self, board):
-        best_value = float('-inf')
-        best_vertex = None
-        for vertex in board.getAllVertices():
-            if vertex.canSettle:
-                value = self.evaluate_settlement_spot(vertex, board)
-                if value > best_value:
-                    best_value = value
-                    best_vertex = vertex
-        return best_vertex
+        valid_vertices = [v for v in board.getAllVertices() if v.canSettle]
+        if len(self.settlements) == 0:  # First settlement
+            best_vertex = max(valid_vertices, key=lambda v: self.evaluate_settlement_spot(v, board, is_first=True))
+            self.first_settlement_resources = set(hex.resource for hex in board.getHexes(best_vertex) if hex.resource != ResourceTypes.NOTHING)
+            return best_vertex
+        else:  # Second settlement
+            return max(valid_vertices, key=lambda v: self.evaluate_settlement_spot(v, board, is_first=False))
 
-    def choose_initial_road(self, vertex, board):
+    def choose_initial_road(self, settlement, board):
         best_value = float('-inf')
         best_edge = None
-        for edge in board.getEdgesOfVertex(vertex):
+        for edge in board.getEdgesOfVertex(settlement):
             if not edge.isOccupied():
-                value = self.evaluate_road_spot(edge, board)
+                value = self.evaluate_initial_road(edge, board, settlement)
                 if value > best_value:
                     best_value = value
                     best_edge = edge
@@ -1363,7 +1361,7 @@ class ValueFunctionPlayer(PlayerAgent):
 
 class QLearningAgent(PlayerAgent):
     def __init__(self, name, agentIndex, color, alpha=0.2, alpha_decay=0.9999, min_alpha=0.05, gamma=0.99, 
-             epsilon_start=0.3, epsilon_end=0.05, epsilon_decay=0.9995, buffer_size=100000, batch_size=64):
+                 epsilon_start=0.3, epsilon_end=0.05, epsilon_decay=0.9995, buffer_size=100000, batch_size=64):
         super().__init__(name, agentIndex, color)
         self.alpha = alpha
         self.alpha_decay = alpha_decay
@@ -1383,6 +1381,13 @@ class QLearningAgent(PlayerAgent):
         self.prune_threshold = 5
         self.prune_frequency = 100
         self.opponent_model = {}
+
+        self.game_stage = "early"  # Can be "early", "mid", or "late"
+        self.initial_settlements = 2  # Start with 2 initial settlements
+        self.first_settlement_resources = set()
+        self.settlement_target = None
+        self.road_path = []
+        self.settlement_bias = 500  # High bias towards settling
     
     def get_state(self, gameState):
         return (
@@ -1400,27 +1405,269 @@ class QLearningAgent(PlayerAgent):
             sum(gameState.bank.values()),  # Total resources in the bank
             self.longestRoadLength,
             gameState.playerAgents[1 - self.agentIndex].longestRoadLength,
+            self.game_stage,
         )
 
-    def getAction(self, gameState):
-        state = self.get_state(gameState)
-        legal_actions = gameState.getLegalActions(self.agentIndex)
+    def update_game_stage(self):
+        if len(self.settlements) <= 3:
+            self.game_stage = "early"
+        elif len(self.settlements) <= 4 and len(self.cities) == 0:
+            self.game_stage = "mid"
+        else:
+            self.game_stage = "late"
 
+    def getAction(self, gameState):
+        legal_actions = gameState.getLegalActions(self.agentIndex)
+        
+        # Highest priority: Build targeted settlement if possible
+        if self.settlement_target:
+            settle_actions = [a for a in legal_actions if a[0] == ACTIONS.SETTLE and a[1] == self.settlement_target]
+            if settle_actions:
+                self.settlement_target = None
+                return 0, settle_actions[0]
+        
+        # Second priority: Build any settlement if possible
+        settle_actions = [a for a in legal_actions if a[0] == ACTIONS.SETTLE]
+        if settle_actions:
+            return 0, max(settle_actions, key=lambda a: self.evaluate_settlement_spot(a[1], gameState.board))
+        
+        # If we can almost settle, consider 4:1 trades
+        if self.is_close_to_settlement():
+            trade_action = self.get_best_trade_for_settlement(legal_actions, gameState)
+            if trade_action:
+                return 0, trade_action
+        
+        # If we have a settlement target but can't build yet, save resources
+        if self.settlement_target and self.is_close_to_settlement():
+            return 0, (ACTIONS.PASS, None)
+        
+        # Build road only if it leads to a new good settlement spot
+        if self.canBuildRoad():
+            road_actions = [a for a in legal_actions if a[0] == ACTIONS.ROAD]
+            best_road = self.choose_best_road(road_actions, gameState.board)
+            if best_road:
+                return 0, best_road
+        
+        # Default to other actions
+        return self.choose_other_action(legal_actions, gameState)
+    
+    def has_settlement_resources(self):
+        return all(self.resources[r] >= SETTLEMENT_COST[r] for r in SETTLEMENT_COST)
+    
+    def choose_best_road(self, road_actions, board):
+        best_road = None
+        best_value = float('-inf')
+        for action in road_actions:
+            road = action[1]
+            vertices = board.getVertexEnds(road)
+            for vertex in vertices:
+                if vertex.canSettle:
+                    value = self.evaluate_settlement_spot(vertex, board)
+                    if value > best_value:
+                        best_value = value
+                        best_road = action
+                        self.settlement_target = vertex
+        return best_road if best_value > 0 else None
+    
+    def road_leads_to_settlement(self, road, board):
+        vertices = board.getVertexEnds(road)
+        for vertex in vertices:
+            if vertex.canSettle:
+                # Check if this vertex is not already connected to one of our roads
+                is_new_connection = True
+                for existing_road in self.roads:
+                    if board.areEdgesConnected(existing_road, road):
+                        vertices_of_existing = board.getVertexEnds(existing_road)
+                        if vertex in vertices_of_existing:
+                            is_new_connection = False
+                            break
+                if is_new_connection:
+                    return True
+        return False
+    
+    def choose_best_city(self, city_actions, board):
+        ore_settlements = []
+        wheat_settlements = []
+        other_settlements = []
+        
+        for action in city_actions:
+            settlement = action[1]
+            resources = set(hex.resource for hex in board.getHexes(settlement))
+            if ResourceTypes.ORE in resources:
+                ore_settlements.append(action)
+            elif ResourceTypes.GRAIN in resources:
+                wheat_settlements.append(action)
+            else:
+                other_settlements.append(action)
+        
+        if ore_settlements:
+            return max(ore_settlements, key=lambda a: self.evaluate_city_spot(a[1], board))
+        elif wheat_settlements:
+            return max(wheat_settlements, key=lambda a: self.evaluate_city_spot(a[1], board))
+        elif other_settlements:
+            return max(other_settlements, key=lambda a: self.evaluate_city_spot(a[1], board))
+        
+        return None
+    
+    def evaluate_action(self, action, gameState):
+        if action[0] == ACTIONS.ROAD:
+            return self.evaluate_road_for_settlement(action[1], gameState.board) - (len(self.roads) * 10)  # Soft penalty for more roads
+        elif action[0] == ACTIONS.CITY:
+            return self.evaluate_city_spot(action[1], gameState.board)
+        elif action[0] == ACTIONS.BUY_DEV_CARD:
+            return 100 if self.game_stage != "early" else 50
+        else:
+            return 0
+    
+    def choose_other_action(self, legal_actions, gameState):
         if not legal_actions:
             return 0, (ACTIONS.PASS, None)
+        
+        # Prioritize settlements and cities over roads
+        settlement_actions = [a for a in legal_actions if a[0] == ACTIONS.SETTLE]
+        city_actions = [a for a in legal_actions if a[0] == ACTIONS.CITY]
+        if settlement_actions:
+            return 0, max(settlement_actions, key=lambda a: self.get_q_value(self.get_state(gameState), self.make_action_hashable(a)))
+        if city_actions:
+            return 0, max(city_actions, key=lambda a: self.get_q_value(self.get_state(gameState), self.make_action_hashable(a)))
 
-        # Prioritize settlements and cities
-        for action in legal_actions:
-            if action[0] == ACTIONS.CITY:
-                return 0, action
-            elif action[0] == ACTIONS.SETTLE:
-                return 0, action
+        road_actions = [a for a in legal_actions if a[0] == ACTIONS.ROAD]
+        if road_actions:
+            return 0, max(road_actions, key=lambda a: self.get_q_value(self.get_state(gameState), self.make_action_hashable(a)))
 
-        # If no settlement or city can be built, proceed with epsilon-greedy
+        # Default to random legal action if no prioritization possible
+        return 0, random.choice(legal_actions)
+        
+    def is_close_to_settlement(self):
+        return sum(max(0, SETTLEMENT_COST[r] - self.resources[r]) for r in SETTLEMENT_COST) <= 1
+
+    def is_close_to_city(self):
+        missing_resources = Counter(CITY_COST)
+        missing_resources.subtract(self.resources)
+        return sum(max(0, count) for count in missing_resources.values()) <= 2
+    
+    def get_best_trade_for_settlement(self, legal_actions, gameState):
+        needed_resources = [r for r in SETTLEMENT_COST if self.resources[r] < SETTLEMENT_COST[r]]
+        if len(needed_resources) != 1:
+            return None
+        
+        needed_resource = needed_resources[0]
+        trade_actions = [a for a in legal_actions if a[0] == ACTIONS.TRADE and a[1][1] == needed_resource]
+        
+        return min(trade_actions, key=lambda a: self.resources[a[1][0]], default=None)
+
+    def evaluate_trade(self, give, get, missing_resources, gameState):
+        # Prioritize getting resources we're missing
+        if get in missing_resources:
+            value = 100
+        else:
+            value = -50
+
+        # Consider the scarcity of the resource we're giving away
+        value -= self.resources[give] / 2
+
+        # Consider our production of the resource we're giving away
+        production = sum(6 - abs(7 - h.diceValue) for h in gameState.board.resourceDict[give])
+        value += production
+
+        return value
+    
+    def get_early_game_action(self, legal_actions, gameState):
+        # Prioritize settling if possible
+        settle_actions = [a for a in legal_actions if a[0] == ACTIONS.SETTLE]
+        if settle_actions:
+            best_settle = max(settle_actions, key=lambda a: self.evaluate_settlement_spot(a[1], gameState.board))
+            return 0, best_settle
+
+        # Prioritize building roads towards good settlement spots
+        road_actions = [a for a in legal_actions if a[0] == ACTIONS.ROAD]
+        if road_actions:
+            best_road = max(road_actions, key=lambda a: self.evaluate_road_for_settlement(a[1], gameState.board))
+            road_value = self.evaluate_road_for_settlement(best_road[1], gameState.board)
+            if road_value > 0:
+                return 0, best_road
+
+        # If no priority actions, use epsilon-greedy
         if random.random() < self.epsilon:
             return 0, random.choice(legal_actions)
         else:
-            return 0, max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)))
+            return 0, max(legal_actions, key=lambda a: self.get_q_value(self.get_state(gameState), self.make_action_hashable(a)))
+    
+    def get_mid_game_action(self, legal_actions, gameState):
+        # Prioritize upgrading to a city if possible
+        city_actions = [a for a in legal_actions if a[0] == ACTIONS.CITY]
+        if city_actions:
+            best_city = max(city_actions, key=lambda a: self.evaluate_city_spot(a[1], gameState.board))
+            return 0, best_city
+
+        # Otherwise, similar to early game but with more emphasis on ore and wheat
+        return self.get_early_game_action(legal_actions, gameState)
+
+    def get_late_game_action(self, legal_actions, gameState):
+        # Prioritize cities and development cards
+        city_actions = [a for a in legal_actions if a[0] == ACTIONS.CITY]
+        if city_actions:
+            best_city = max(city_actions, key=lambda a: self.evaluate_city_spot(a[1], gameState.board))
+            return 0, best_city
+
+        dev_card_actions = [a for a in legal_actions if a[0] == ACTIONS.BUY_DEV_CARD]
+        if dev_card_actions:
+            return 0, dev_card_actions[0]
+
+        # If no priority actions, use epsilon-greedy
+        if random.random() < self.epsilon:
+            return 0, random.choice(legal_actions)
+        else:
+            return 0, max(legal_actions, key=lambda a: self.get_q_value(self.get_state(gameState), self.make_action_hashable(a)))
+    
+    def evaluate_road_for_settlement(self, edge, board, settlement=None):
+        vertices = board.getVertexEnds(edge)
+        best_value = 0
+
+        for vertex in vertices:
+            if vertex != settlement and vertex.canSettle:
+                value = self.evaluate_settlement_spot(vertex, board)
+                best_value = max(best_value, value)
+
+        # Look one step further
+        for vertex in vertices:
+            for next_edge in board.getEdgesOfVertex(vertex):
+                if not next_edge.isOccupied():
+                    next_vertex = [v for v in board.getVertexEnds(next_edge) if v != vertex][0]
+                    if next_vertex.canSettle:
+                        value = self.evaluate_settlement_spot(next_vertex, board) * 0.8  # Discount future settlements
+                        best_value = max(best_value, value)
+
+        return best_value
+
+    def get_best_trade(self, legal_actions, gameState):
+        trade_actions = [a for a in legal_actions if a[0] == ACTIONS.TRADE]
+        best_trade = None
+        best_value = float('-inf')
+        
+        target_resources = set(SETTLEMENT_COST.keys()).union(set(CITY_COST.keys()))
+        
+        for action in trade_actions:
+            _, (give, get) = action
+            if get in target_resources:
+                value = 50 - self.resources[give]  # Prioritize trades that give us needed resources
+                if get in CITY_COST:
+                    value += 25  # Extra value for city resources
+                if value > best_value:
+                    best_value = value
+                    best_trade = action
+        
+        return best_trade
+
+    def get_missing_resources(self, gameState):
+        producing_resources = set()
+        for settlement in self.settlements + self.cities:
+            hexes = gameState.board.getHexes(settlement)
+            for hex in hexes:
+                if hex.resource != ResourceTypes.NOTHING:
+                    producing_resources.add(hex.resource)
+        
+        return set(RESOURCES) - producing_resources
 
     def update(self, state, action, next_state, reward, gameState):
         if action[0] == ACTIONS.MOVE_ROBBER:
@@ -1429,11 +1676,37 @@ class QLearningAgent(PlayerAgent):
             reward += robber_value
 
         if action[0] == ACTIONS.SETTLE:
-            reward += 200  # Significantly increase reward for building settlements
-        elif action[0] == ACTIONS.CITY:
-            reward += 300  # Even higher reward for building cities
+            settlement = action[1]
+            center_x, center_y = gameState.board.numCols // 2, gameState.board.numRows // 2
+            distance_to_center = ((settlement.X - center_x) ** 2 + (settlement.Y - center_y) ** 2) ** 0.5
+            reward += (10 - distance_to_center) * 50  # Reward central settlements
+            
+            # Reward for the number of resources and their probability
+            hexes = gameState.board.getHexes(settlement)
+            resource_value = sum(6 - abs(7 - h.diceValue) for h in hexes if h.resource != ResourceTypes.NOTHING)
+            reward += resource_value * 20
+        elif action[0] == ACTIONS.TRADE:
+            _, (give, get) = action
+            if self.is_close_to_settlement() and get in SETTLEMENT_COST:
+                reward += 200  # High reward for trading towards a settlement
         elif action[0] == ACTIONS.ROAD:
-            reward += 10  # Minimal reward for building roads
+            if self.road_leads_to_settlement(action[1], gameState.board):
+                reward += 50
+            else:
+                reward -= 500  # Much heavier penalty for unnecessary roads
+        elif action[0] == ACTIONS.BUY_DEV_CARD:
+            if self.game_stage != "early":
+                reward += 100
+        elif action[0] == ACTIONS.CITY:
+            reward += 150  # Higher reward for building a city
+
+        # Adjust reward based on game stage and action
+        if self.game_stage == "early" and action[0] in [ACTIONS.ROAD, ACTIONS.SETTLE]:
+            reward *= 1.2
+        elif self.game_stage == "mid" and action[0] == ACTIONS.CITY:
+            reward *= 1.5  # Increased multiplier for cities in mid-game
+        elif self.game_stage == "late" and action[0] in [ACTIONS.CITY, ACTIONS.BUY_DEV_CARD]:
+            reward *= 1.4
         
         # Penalize for having too many roads
         num_roads = len(self.roads)
@@ -1566,14 +1839,14 @@ class QLearningAgent(PlayerAgent):
         next_max = self.get_max_q_value(next_state)
 
         if gameState.gameOver() == self.agentIndex:
-            reward = 1000  # Huge reward for winning
+            reward = 2000
         elif gameState.gameOver() >= 0:
-            reward = -1000  # Huge penalty for losing
+            reward = -2000
         else:
             vp_gain = next_state[0] - state[0]
             opponent_vp = next_state[5]
             vp_difference = next_state[0] - opponent_vp
-            reward = vp_gain * 100 + vp_difference * 50
+            reward += vp_gain * 200 + vp_difference * 100
 
         new_q = (1 - self.alpha) * old_q + self.alpha * (reward + self.gamma * next_max)
         self.q_table[state][self.make_action_hashable(action)] = new_q
@@ -1604,15 +1877,18 @@ class QLearningAgent(PlayerAgent):
         self.iteration += 1
         self.save_q_table()
 
-    def save_q_table(self):
+    def save_q_table_data(self, q_table, iteration):
         filename = f"q_table_player_{self.agentIndex}.pkl"
         data = {
-            'q_table': self.q_table,
-            'iteration': self.iteration
+            'q_table': q_table,
+            'iteration': iteration
         }
         with open(filename, 'wb') as f:
             pickle.dump(data, f)
-        print(f"Updated Q-table for Player {self.agentIndex}, iteration {self.iteration}")
+        print(f"Saved Q-table for Player {self.agentIndex}, iteration {iteration}, Q-table size: {len(q_table)}")
+    
+    def save_q_table(self):
+        self.save_q_table_data(self.q_table, self.iteration)
 
     def load_q_table(self):
         filename = f"q_table_player_{self.agentIndex}.pkl"
@@ -1627,68 +1903,178 @@ class QLearningAgent(PlayerAgent):
         return {}, 0
     
     def choose_initial_settlement(self, board):
-        best_value = float('-inf')
-        best_vertex = None
         valid_vertices = [v for v in board.getAllVertices() if v.canSettle]
+        if len(self.settlements) == 0:  # First settlement
+            best_vertex = max(valid_vertices, key=lambda v: self.evaluate_settlement_spot(v, board, is_first=True))
+            self.first_settlement_resources = {hex.resource: 6 - abs(7 - hex.diceValue) 
+                                            for hex in board.getHexes(best_vertex) 
+                                            if hex.resource != ResourceTypes.NOTHING}
+            return best_vertex
+        else:  # Second settlement
+            return max(valid_vertices, key=lambda v: self.evaluate_settlement_spot(v, board, is_first=False))
 
-        for vertex in valid_vertices:
-            value = self.evaluate_settlement_spot(vertex, board)
-            value += random.uniform(0, 1)  # Add some randomness
-            if value > best_value:
-                best_value = value
-                best_vertex = vertex
-        return best_vertex
+    def evaluate_first_settlement(self, vertex, board):
+        return self.evaluate_settlement_spot(vertex, board, is_first=True)
 
-    def choose_initial_road(self, vertex, board):
-        best_value = float('-inf')
+    def evaluate_second_settlement(self, vertex, board):
+        first_settlement_resources = set(hex.resource for hex in board.getHexes(self.settlements[0]) if hex.resource != ResourceTypes.NOTHING)
+        return self.evaluate_settlement_spot(vertex, board, is_first=False, existing_resources=first_settlement_resources)
+
+    def choose_initial_road(self, settlement, board):
         best_edge = None
-        valid_edges = [e for e in board.getEdgesOfVertex(vertex) if not e.isOccupied()]
-
-        for edge in valid_edges:
-            value = self.evaluate_road_spot(edge, board)
-            value += random.uniform(0, 1)  # Add some randomness
-            if value > best_value:
-                best_value = value
-                best_edge = edge
+        best_value = float('-inf')
+        for edge in board.getEdgesOfVertex(settlement):
+            if not edge.isOccupied():
+                value = self.evaluate_road(edge, board)
+                if value > best_value:
+                    best_value = value
+                    best_edge = edge
         return best_edge
+    
+    def evaluate_road_path(self, start_vertex, board, depth=2):
+        best_path = []
+        best_value = 0
+        
+        def dfs(vertex, path, value, current_depth):
+            nonlocal best_path, best_value
+            if current_depth == 0:
+                if value > best_value:
+                    best_value = value
+                    best_path = path.copy()
+                return
 
-    def evaluate_settlement_spot(self, vertex, board):
+            for edge in board.getEdgesOfVertex(vertex):
+                if not edge.isOccupied() and edge not in path:
+                    next_vertex = [v for v in board.getVertexEnds(edge) if v != vertex][0]
+                    if next_vertex.canSettle:
+                        new_value = value + self.evaluate_settlement_spot(next_vertex, board)
+                        dfs(next_vertex, path + [edge], new_value, current_depth - 1)
+                    else:
+                        dfs(next_vertex, path + [edge], value, current_depth - 1)
+
+        dfs(start_vertex, [], 0, depth)
+        return best_path, best_value
+    
+    def evaluate_initial_road(self, edge, board, settlement):
+        other_vertex = [v for v in board.getVertexEnds(edge) if v != settlement][0]
+        
+        # Heavily penalize roads that lead to the edge of the board
+        if len(board.getHexes(other_vertex)) < 3:
+            return float('-inf')  # Effectively rule out edge spots
+
+        # Evaluate the immediate potential settlement spot
+        immediate_value = self.evaluate_settlement_spot(other_vertex, board) if other_vertex.canSettle else 0
+
+        # Look ahead to evaluate potential future settlement spots
+        future_value = 0
+        for next_edge in board.getEdgesOfVertex(other_vertex):
+            if not next_edge.isOccupied():
+                next_vertex = [v for v in board.getVertexEnds(next_edge) if v != other_vertex][0]
+                if next_vertex.canSettle:
+                    future_value = max(future_value, self.evaluate_settlement_spot(next_vertex, board))
+
+        # Heavily weight future value
+        total_value = immediate_value * 0.2 + future_value * 0.8
+
+        # Bonus for roads leading towards the center
+        center_x, center_y = board.numCols // 2, board.numRows // 2
+        distance_to_center = ((other_vertex.X - center_x) ** 2 + (other_vertex.Y - center_y) ** 2) ** 0.5
+        center_bonus = (10 - distance_to_center) * 20
+
+        # Bonus for roads that open up more options
+        connected_edges = board.getEdgesOfVertex(other_vertex)
+        open_edges = sum(1 for e in connected_edges if not e.isOccupied())
+        options_bonus = open_edges * 30
+
+        return total_value + center_bonus + options_bonus
+
+    def evaluate_settlement_spot(self, vertex, board, is_first=True):
         hexes = board.getHexes(vertex)
         value = 0
-        resource_types = set()
-        production_value = 0
+        resources = Counter()
 
         for hex in hexes:
             if hex.resource != ResourceTypes.NOTHING:
-                # Calculate production value (6 and 8 are most valuable)
-                probability_value = 6 - abs(7 - hex.diceValue)
-                production_value += probability_value
-                value += probability_value * 2
+                probability = 6 - abs(7 - hex.diceValue)
+                resources[hex.resource] += probability
+                
+                # Base value for all resources
+                value += probability * 10
+                
+                # Extra value for high-probability hexes
+                if hex.diceValue in [5, 6, 8, 9]:
+                    value += probability * 100
+                elif hex.diceValue in [4, 10]:
+                    value += probability * 60
 
-                resource_types.add(hex.resource)
+        if is_first:
+            # For first settlement, heavily prioritize high production
+            production_value = sum(resources.values())
+            value = production_value * 100  # Make this the dominant factor
 
+            # Slight bonus for ore
+            if ResourceTypes.ORE in resources:
+                value += 50
+
+            # Small bonus for resource diversity
+            value += len(set(resources.keys())) * 20
+
+            # Store information about grain quality for the first settlement
+            self.first_settlement_grain_quality = resources[ResourceTypes.GRAIN]
+
+        else:
+            # For second settlement
+            if ResourceTypes.LUMBER not in self.first_settlement_resources:
+                value += resources[ResourceTypes.LUMBER] * 500
+            else:
+                value += resources[ResourceTypes.LUMBER] * 100
+
+            if ResourceTypes.ORE not in self.first_settlement_resources:
+                ore_value = resources[ResourceTypes.ORE]
+                if any(hex.resource == ResourceTypes.ORE for hex in hexes):
+                    value += ore_value * 250
+
+            # Prioritize good grain if the first settlement doesn't have it
+            if self.first_settlement_grain_quality < 3:  # Adjust this threshold as needed
+                grain_value = resources[ResourceTypes.GRAIN]
+                if any(hex.resource == ResourceTypes.GRAIN and hex.diceValue in [5, 6, 8, 9] for hex in hexes):
+                    value += grain_value * 400  # High value for good grain
+                elif any(hex.resource == ResourceTypes.GRAIN and hex.diceValue in [4, 10] for hex in hexes):
+                    value += grain_value * 300  # Decent value for okay grain
+
+            for resource in ResourceTypes:
+                if resource not in self.first_settlement_resources:
+                    value += resources[resource] * 100
+                else:
+                    value += resources[resource] * 50
+
+            # Keep the expansion potential for the second settlement
+            expansion_value = sum(1 for edge in board.getEdgesOfVertex(vertex) if not edge.isOccupied()) * 50
+            value += expansion_value
+
+        # Penalize bad number tiles (2, 12)
+        for hex in hexes:
+            if hex.diceValue in [2, 12]:
+                value -= 100
+
+        # Add a very small centrality bonus as a final tie-breaker
+        center_x, center_y = board.numCols // 2, board.numRows // 2
+        distance_to_center = ((vertex.X - center_x) ** 2 + (vertex.Y - center_y) ** 2) ** 0.5
+        centrality_bonus = (10 - distance_to_center) * 0.1
+        value += centrality_bonus
+
+        return value
+    
+    def evaluate_city_spot(self, vertex, board):
+        hexes = board.getHexes(vertex)
+        value = 0
+        for hex in hexes:
+            if hex.resource != ResourceTypes.NOTHING:
+                probability = 6 - abs(7 - hex.diceValue)
                 if hex.resource in [ResourceTypes.ORE, ResourceTypes.GRAIN]:
-                    value += 1  # Slightly favor resources needed for cities
-
-        # Reward resource variety
-        variety_bonus = len(resource_types) * 3
-        value += variety_bonus
-
-        # Significant bonus for being on three productive hexes
-        if len([h for h in hexes if h.resource != ResourceTypes.NOTHING]) == 3:
-            value += 10
-
-        # Penalty for being on the coast (less than 3 hexes)
-        if len(hexes) < 3:
-            value -= 5
-
-        # Consider potential for expansion
-        expandable_edges = sum(1 for edge in board.getEdgesOfVertex(vertex) if not edge.isOccupied())
-        value += expandable_edges * 2
-
-        # Store production value for potential city upgrades
-        vertex.production_value = production_value
-
+                    value += probability * 3
+                else:
+                    value += probability
         return value
 
     def evaluate_road_spot(self, edge, board):
@@ -1711,6 +2097,33 @@ class QLearningAgent(PlayerAgent):
         adjacent_edges = board.getEdgesOfVertex(vertices[0]) + board.getEdgesOfVertex(vertices[1])
         connected_roads = sum(1 for adj_edge in adjacent_edges if adj_edge.isOccupied() and adj_edge.player == self.agentIndex)
         value += connected_roads * 2
+
+        return value
+    
+    def evaluate_road(self, road, board):
+        value = 0
+        leads_to_settlement = False
+        for vertex in board.getVertexEnds(road):
+            if vertex.canSettle:
+                settlement_value = self.evaluate_settlement_spot(vertex, board)
+                value += settlement_value * 2  # Double the value for immediate settlement opportunities
+                leads_to_settlement = True
+            else:
+                # Look one step further
+                for next_edge in board.getEdgesOfVertex(vertex):
+                    if not next_edge.isOccupied() and next_edge != road:
+                        next_vertex = [v for v in board.getVertexEnds(next_edge) if v != vertex][0]
+                        if next_vertex.canSettle:
+                            value += self.evaluate_settlement_spot(next_vertex, board) * 0.5  # Half value for two-step settlements
+                            leads_to_settlement = True
+
+        # Check if this road extends from our existing roads
+        if any(board.areEdgesConnected(road, existing_road) for existing_road in self.roads):
+            value += 20  # Small bonus for connectivity, but not the main factor
+
+        # Heavily penalize roads that don't lead to new settlement opportunities
+        if not leads_to_settlement:
+            value -= 500
 
         return value
 

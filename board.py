@@ -498,6 +498,14 @@ class Board:
             self.edges[x*2+offset][y]
         ]
         return [edge for edge in edges if edge is not None]
+    
+    def areEdgesConnected(self, edge1, edge2):
+        # Get the vertices of both edges
+        vertices1 = self.getVertexEnds(edge1)
+        vertices2 = self.getVertexEnds(edge2)
+        
+        # Check if the edges share a vertex
+        return any(v1 == v2 for v1 in vertices1 for v2 in vertices2)
 
     def getHexes(self, vertex):
         x, y = vertex.X, vertex.Y
