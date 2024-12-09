@@ -1120,7 +1120,7 @@ DEFAULT_WEIGHTS = {
     "losing": -1e9
 }
 
-# Change these to play around with new values
+# Change these to play around with 
 CONTENDER_WEIGHTS = {
     "public_vps": 300000000000001.94,
     "production": 100000002.04188395,
@@ -1409,16 +1409,40 @@ class QLearningAgent(PlayerAgent):
         if not legal_actions:
             return 0, (ACTIONS.PASS, None)
 
-        if random.random() < self.epsilon:
-            action = random.choice(legal_actions)
-        else:
-            action = max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)))
+        # Prioritize settlements and cities
+        for action in legal_actions:
+            if action[0] == ACTIONS.CITY:
+                return 0, action
+            elif action[0] == ACTIONS.SETTLE:
+                return 0, action
 
-        self.last_state = state
-        self.last_action = action
-        return 0, action
+        # If no settlement or city can be built, proceed with epsilon-greedy
+        if random.random() < self.epsilon:
+            return 0, random.choice(legal_actions)
+        else:
+            return 0, max(legal_actions, key=lambda a: self.get_q_value(state, self.make_action_hashable(a)))
 
     def update(self, state, action, next_state, reward, gameState):
+        if action[0] == ACTIONS.MOVE_ROBBER:
+            robber_hex = action[1]
+            robber_value = self.evaluate_robber_placement(gameState.board.getHex(robber_hex[0], robber_hex[1]), gameState.board)
+            reward += robber_value
+
+        if action[0] == ACTIONS.SETTLE:
+            reward += 200  # Significantly increase reward for building settlements
+        elif action[0] == ACTIONS.CITY:
+            reward += 300  # Even higher reward for building cities
+        elif action[0] == ACTIONS.ROAD:
+            reward += 10  # Minimal reward for building roads
+        
+        # Penalize for having too many roads
+        num_roads = len(self.roads)
+        if num_roads > 10:  # Adjust this threshold as needed
+            reward -= (num_roads - 10) * 5  # Increasing penalty for each road above the threshold
+
+        # Additional reward for having more settlements/cities
+        reward += len(self.settlements) * 50 + len(self.cities) * 100
+    
         td_error = abs(reward + self.gamma * self.get_max_q_value(next_state) - self.get_q_value(state, action))
         priority = (td_error + 0.01) ** 0.6
 
@@ -1697,11 +1721,20 @@ class QLearningAgent(PlayerAgent):
     def evaluate_robber_placement(self, hex, board):
         value = 0
         for vertex in board.getVertices(hex):
-            if vertex.player is not None and vertex.player != self.agentIndex:
-                value += 10  # Bonus for blocking opponent
-            if vertex.player == self.agentIndex:
-                value -= 5  # Penalty for blocking self
-        return value + (6 - abs(7 - hex.diceValue))  # Consider hex productivity
+            if vertex.player is not None:
+                if vertex.player != self.agentIndex:
+                    # Increase the value for blocking opponent's spots
+                    production_value = sum(6 - abs(7 - h.diceValue) for h in board.getHexes(vertex) if h.resource != ResourceTypes.NOTHING)
+                    value += 50 * production_value  # Significantly increase the value for blocking high-production opponent spots
+                else:
+                    # Heavily penalize blocking own spots
+                    value -= 1000  # Large negative value for blocking self
+        
+        # Consider the hex productivity
+        hex_productivity = 6 - abs(7 - hex.diceValue)
+        value += hex_productivity * 2  # Give some weight to the hex productivity
+        
+        return value
     
     def discard_half_on_seven(self, gameState):
         total_resources = sum(self.resources.values())

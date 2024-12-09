@@ -188,7 +188,7 @@ class GameState:
         elif VERBOSE:
             print(f"No players to steal from at the new robber location")
         return None
-    
+
     def checkLargestArmy(self):
         players_with_3_plus_knights = [player for player in self.playerAgents if player.played_knights >= LARGEST_ARMY_REQUIREMENT]
         
