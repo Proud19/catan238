@@ -343,16 +343,17 @@ class Game:
             agent = self.gameState.playerAgents[i]
 
             # Get settlement
-            if isinstance(agent, PlayerAgentHuman):
-                vertex = self.gameState.board.getHumanVertexForSettlement()
-            elif isinstance(agent, PlayerAgentRandom):
+            if isinstance(agent, PlayerAgentRandom):
                 vertex = self.gameState.board.getRandomVertexForSettlement()
+                if vertex is None:
+                    raise Exception("No valid settlement spots available")
             elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer, QLearningAgent)):
                 vertex = agent.choose_initial_settlement(self.gameState.board)
+            elif isinstance(agent, PlayerAgentHuman):
+                vertex = self.gameState.board.getHumanVertexForSettlement()
             else:
-                # Default to random selection if agent type is unknown
                 vertex = self.gameState.board.getRandomVertexForSettlement()
-            
+
             self.gameState.board.applyAction(i, (ACTIONS.SETTLE, vertex))
             agent.settlements.extend([vertex])
 
@@ -360,16 +361,17 @@ class Game:
             pygame.display.flip()
 
             # Get connected road
-            if isinstance(agent, PlayerAgentHuman):
-                road = self.gameState.board.getHumanRoad(vertex)
-            elif isinstance(agent, PlayerAgentRandom):
+            if isinstance(agent, PlayerAgentRandom):
                 road = self.gameState.board.getRandomRoad(vertex)
+                if road is None:
+                    raise Exception("No valid road spots available")
             elif isinstance(agent, (PlayerAgentExpectiminimax, PlayerAgentExpectimax, ValueFunctionPlayer, QLearningAgent)):
                 road = agent.choose_initial_road(vertex, self.gameState.board)
+            elif isinstance(agent, PlayerAgentHuman):
+                road = self.gameState.board.getHumanRoad(vertex)
             else:
-                # Default to random selection if agent type is unknown
                 road = self.gameState.board.getRandomRoad(vertex)
-            
+
             self.gameState.board.applyAction(i, (ACTIONS.ROAD, road))
             agent.roads.extend([road])
 

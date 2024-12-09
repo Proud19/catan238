@@ -346,26 +346,34 @@ class Board:
         return choose_vertex(possibleVertices, self.draw)
 
     def getRandomVertexForSettlement(self):
-        vertex = None
-        while vertex is None:
-            vX = random.randint(0, len(self.vertices)-1)
-            vY = random.randint(0, len(self.vertices[vX])-1)
-            vertex = self.vertices[vX][vY]
-            if vertex is not None and not vertex.canSettle:
-                vertex = None
-        return vertex
+        valid_vertices = []
+        for x in range(len(self.vertices)):
+            for y in range(len(self.vertices[x])):
+                vertex = self.vertices[x][y]
+                if vertex is not None and vertex.canSettle:
+                    # Check distance rule
+                    if all(not neighbor.isOccupied() for neighbor in self.getNeighborVertices(vertex)):
+                        valid_vertices.append(vertex)
+        
+        if not valid_vertices:
+            return None  # No valid spots available
+        
+        return random.choice(valid_vertices)
 
     def getHumanRoad(self, vertex):
         possibleEdges = self.getEdgesOfVertex(vertex)
         return choose_edge(possibleEdges, self, self.draw)
 
     def getRandomRoad(self, vertex):
-        edges = self.getEdgesOfVertex(vertex)
-        random.shuffle(edges)
-        for edge in edges:
+        valid_edges = []
+        for edge in self.getEdgesOfVertex(vertex):
             if not edge.isOccupied():
-                return edge
-        return None
+                valid_edges.append(edge)
+        
+        if not valid_edges:
+            return None  # No valid spots available
+    
+        return random.choice(valid_edges)
 
     def getEdge(self, x, y):
         return self.edges[x][y]
