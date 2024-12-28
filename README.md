@@ -1,57 +1,76 @@
-# Catan Conqueror: Intelligent Bot for Settlers of Catan
+# Catan Conqueror: AI Agents for Two-Player Settlers of Catan
 
----
+## Overview
+**Catan Conqueror** is a framework for developing and evaluating AI agents to play a two-player version of the board game *Settlers of Catan*. This project implements and benchmarks multiple agents using techniques such as Q-learning, custom value functions, and lookahead with rollouts.
 
-### Project Overview  
-An intelligent bot designed to master the classic board game *Settlers of Catan*. This project aims to implement a bot that can compete against human players by leveraging both strategy and probabilistic decision-making, incorporating the elements of chance (e.g., dice rolls) and strategic planning (e.g., resource management, negotiation, and route optimization) inherent in the game.
+## Rules and Gameplay
+The game is based on the standard rules of *Settlers of Catan* with the following modifications:
+- **Two-player mode**: Only two players are supported.
+- **Fixed board initialization**: The board setup (hexes, numbers, and robber placement) is the same for every game.
+- **No ports**: Ports are removed from the game.
+- **No interplayer trading**: Players cannot trade resources directly with each other.
 
-**Contributors**  
-- Charlie Gordon  
-- Caroline Cahilly  
-- Proud Mpala  
+Players compete to be the first to reach **10 victory points** by building settlements, cities, and roads, as well as acquiring development cards.
 
----
+## Implemented Agents
+This repository includes five distinct agents:
 
-### 🧭 Goal
+### 1. **Random Agent**
+- Makes moves randomly based on valid actions.
+- Serves as a baseline for evaluating other agents.
 
-Our objective is to develop a bot capable of competing at a level comparable to human players in *Catan*. We benchmark performance against:
-- A **random-move bot** baseline.
-- **Human-level competition** where each team member will play the bot multiple times. The target win rate is set to >1/n (where *n* is the number of players), indicating human-competitive performance.
+### 2. **Custom Value Function Agent**
+- Uses a custom heuristic to evaluate game states and select actions greedily.
+- Evaluates settlement locations, production potential, and future expansion options.
 
-**Why It’s Interesting**  
-The game dynamics of *Catan* involve complex decision-making under uncertainty, making this a fascinating problem for AI development. This project blends AI, game theory, and decision modeling in a multi-agent environment.
+### 3. **Q-Learning Agent**
+- Implements a reinforcement learning approach with:
+  - **State representation** capturing game progress, opponent status, and board state.
+  - **Experience replay** for stable learning.
+  - **Reward shaping** to encourage long-term strategies and victory.
+  - **Q-table pruning** to focus learning on relevant states.
+- Trained over 15,000 iterations and achieves an 85% win rate against the Custom Value Function agent.
 
----
+### 4. **Lookahead-with-Rollouts Agent**
+- Uses simulated rollouts to evaluate future actions.
+- Can operate with either **random** or **greedy policies** during rollouts.
+- Allows customization of rollout depth to balance computation time and performance.
 
-### 🧠 Decision-Making Process
+### 5. **Human Agent**
+- Allows a human player to compete against AI agents via a graphical user interface (GUI).
 
-The bot’s decisions are modeled as a **Sequential Decision Problem**, with actions affecting game states, opponents, and the bot's path to victory.  
-- **States**: The bot’s resources, board position, visible opponent positions, and a probabilistic model of resource generation.
-- **Actions**: Building (settlements, cities, roads), trading (with players or bank), strategic moves like using Development Cards or placing the robber.
-- **Transitions**: Determined by dice rolls, trade outcomes, and resource constraints.
-- **Rewards**: Points toward winning the game, with intermediate rewards from strategic positioning, resource control, or robber placement.
+## Experiments and Results
+### 1. **Agent vs. Agent Matches**
+- All agents were tested against each other in 200 simulations, alternating first-player advantages.
+- The **Q-Learning Agent** performed best, with a win rate of 76% against its trainer, the custom function value agent.
 
----
+### 2. **Ablation Study for Rollout Depth**
+- Deeper rollouts beyond depth 5 did not significantly improve performance but increased computation time.
 
-### 🎲 Key Sources of Uncertainty
+### 3. **Rollout Policy Comparisons**
+- Greedy policies for both agents and opponents yielded the highest win rates and efficiency.
 
-- **Dice Rolls**: Randomly determine resource generation.
-- **Opponent Behavior**: Unpredictable actions like trade offers and robber placements require adaptability.
-- **Limited Information**: Only partial visibility into opponents’ resources adds complexity.
+See `docs/` for more details.
 
----
+## Key Files
+- `game.py`: Entry point to run experiments and simulations.
+- `agents.py`: Contains implementations for each AI agent.
+- `draw.py`: GUI implementation.
+- `gameConstants.py`: Game constants (e.g., valid actions).
+- `board.py`: Game state.
 
-### ⚙️ Solution Sketch
+## Future Work
+- **Randomized board setups** to generalize strategies.
+- **Port mechanics** and **player trading** for expanded gameplay.
+- **Multi-agent dynamics** for larger player groups.
+- **Improved opponent modeling** to handle dynamic strategies.
 
-Our initial approach simplifies the problem to a 1v1 game, modeling it as a **multi-agent POMDP** where each agent seeks to maximize points. The bot’s decision-making combines POMDP-based strategy with heuristic approaches for resource and trade management.
-
----
-
-### 📚 Resources Used  
-- [Catanatron Colab](https://colab.research.google.com/github/bcollazo/catanatron/blob/master/catanatron_experimental/catanatron_experimental/Overview.ipynb)
-- [Stanford CS221 Posters and Reports](https://web.stanford.edu/class/archive/cs/cs221/cs221.1192/2018/restricted/posters/wlauer/poster.pdf)
+## References
+1. Collazo, B. (2024). *Catanatron: An AI for Settlers of Catan*. [GitHub Repository](https://github.com/bcollazo/catanatron).
+2. Kaplan-Nelson, S., Leung, S., & Troccoli, N. (2014). *An AI Agent for Settlers of Catan*. [GitHub Repository](https://github.com/skleung/cs221).
 
 ---
 
 ### 🤝 Contribute to Catan Conqueror  
 This project is open for contributions, feedback, and suggestions. Help us build the ultimate *Catan* bot!
+Developed by Caroline Cahilly, Charlie Gordon, and Proud Mplala at Stanford University.
