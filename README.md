@@ -11,7 +11,7 @@ An intelligent bot designed to master the classic board game *Settlers of Catan*
 - Proud Mpala
 
 **Project Report**
-- [CS238__Final_Report.pdf](https://github.com/user-attachments/files/18841691/CS238__Final_Report.pdf)
+- [Catan Conqueror: Building Bots to Rule the Island](https://github.com/user-attachments/files/18841691/CS238__Final_Report.pdf)
 
 
 ---
