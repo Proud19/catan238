@@ -10,8 +10,8 @@ An intelligent bot designed to master the classic board game *Settlers of Catan*
 - Caroline Cahilly  
 - Proud Mpala
 
-** Project Report ***
-[CS238__Final_Report.pdf](https://github.com/user-attachments/files/18841691/CS238__Final_Report.pdf)
+** Project Report **
+- [CS238__Final_Report.pdf](https://github.com/user-attachments/files/18841691/CS238__Final_Report.pdf)
 
 
 ---
